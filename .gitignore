@@ -1,0 +1,12 @@
+# Python virtual environment
+.venv
+__pycache__/
+
+# Large AI/FAISS output files
+embeddings/
+*.pkl
+*.index
+
+# Logs and system files
+*.log
+.DS_Store
