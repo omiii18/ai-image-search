@@ -83,3 +83,5 @@ Directory where user photos are stored.
 .gitignore
 
 Prevents uploading large and unnecessary files (like .venv and embeddings).
+
+Thank you
