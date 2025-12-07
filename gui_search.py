@@ -35,6 +35,13 @@ except FileNotFoundError:
     messagebox.showerror("Error", "FAISS index files not found. Run index.py first!")
     exit()
 
+# --- KEYWORDS FOR AUTO-SUGGESTION ---
+# Expand this list based on your indexed image content!
+SUGGESTION_KEYWORDS = [
+    "dog", "cat", "car", "person", "beach", "sunset", "tree", "food",
+    "building", "mountain", "water", "yellow", "red", "motorcycle", "newborn"
+]
+
 # --- 2. THE SEARCH LOGIC ---
 def search_images(query, k=10): # k is set to 10 for 8-10 matches
     # 1. Convert text query to vector
@@ -133,6 +140,61 @@ def on_search():
 
     status_label.config(text=f"Done. Displaying top {len(results)} results.")
 
+# --- AUTOCOMPLETE LOGIC ---
+def show_suggestions(event):
+    """Called whenever a key is released in the search entry."""
+    # Ensure the listbox exists and the entry is active
+    if not hasattr(root, 'suggestions_listbox'):
+        return
+
+    # Get the current text
+    prefix = search_entry.get().lower()
+
+    # Clear previous data
+    root.suggestions_listbox.delete(0, tk.END)
+
+    if not prefix:
+        root.suggestions_listbox.place_forget() # Hide the listbox
+        return
+
+    # Filter keywords that start with the prefix
+    suggestions = [
+        word for word in SUGGESTION_KEYWORDS 
+        if word.lower().startswith(prefix)
+    ]
+
+    if suggestions:
+        # Show the listbox
+        root.suggestions_listbox.place(x=search_entry.winfo_x(), 
+                                       y=search_entry.winfo_y() + search_entry.winfo_height(),
+                                       relwidth=search_entry.winfo_width())
+
+        # Populate the listbox
+        for suggestion in suggestions:
+            root.suggestions_listbox.insert(tk.END, suggestion)
+
+        # Bind the click event to select the word
+        root.suggestions_listbox.bind("<<ListboxSelect>>", select_suggestion)
+
+    else:
+        root.suggestions_listbox.place_forget() # Hide if no suggestions
+
+def select_suggestion(event):
+    """Called when a suggestion is clicked in the listbox."""
+    if root.suggestions_listbox.curselection():
+        # Get the selected item's text
+        selected_word = root.suggestions_listbox.get(root.suggestions_listbox.curselection())
+
+        # Set the selected word as the entry content
+        search_entry.delete(0, tk.END)
+        search_entry.insert(0, selected_word)
+
+        # Hide the listbox
+        root.suggestions_listbox.place_forget()
+
+        # Optional: Immediately perform search
+        # on_search()
+
 # --- 4. START THE APP (Global Variables Defined Here) ---
 root = tk.Tk()
 root.title("My Research AI Search Tool")
@@ -146,8 +208,20 @@ top_frame.pack()
 tk.Label(top_frame, text="Search your Photos:", font=("Arial", 14)).pack(side="left", padx=5)
 search_entry = tk.Entry(top_frame, width=30, font=("Arial", 14))
 search_entry.pack(side="left", padx=5)
+
+# *** ADD BINDING ***
+# Bind the KeyRelease event to the show_suggestions function
+search_entry.bind("<KeyRelease>", show_suggestions) 
+
 btn = tk.Button(top_frame, text="Search", command=on_search, bg="blue", fg="white")
 btn.pack(side="left", padx=5)
+
+# *** ADD LISTBOX FOR SUGGESTIONS ***
+# Initialize the Listbox, but do NOT pack/grid it yet; we will use .place() to overlay it.
+root.suggestions_listbox = tk.Listbox(root, height=5, selectmode=tk.SINGLE, 
+                                      font=("Arial", 12), relief=tk.RIDGE, bd=1,
+                                      background="white", highlightthickness=0)
+root.suggestions_listbox.place_forget() # Start hidden
 
 # 2. Status Bar
 status_label = tk.Label(root, text="Ready", fg="gray")
