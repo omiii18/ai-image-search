@@ -6,6 +6,7 @@ import faiss
 import numpy as np
 import tkinter as tk
 from tkinter import messagebox
+from tkinter import filedialog 
 from PIL import Image, ImageTk
 
 # --- ENVIRONMENT FIX (OMP Error) ---
@@ -43,29 +44,48 @@ SUGGESTION_KEYWORDS = [
 ]
 
 # --- 2. THE SEARCH LOGIC ---
-def search_images(query, k=10): # k is set to 10 for 8-10 matches
-    # 1. Convert text query to vector
-    text_token = clip.tokenize([query]).to(device)
-    with torch.no_grad():
-        query_vector = model.encode_text(text_token)
-        # Normalize the query vector
-        query_vector = query_vector / query_vector.norm(dim=-1, keepdim=True)
-        
+def search_images(query_text=None, query_image_path=None, k=10):
+    
+    query_vector = None
+    
+    if query_image_path:
+        # --- IMAGE QUERY MODE ---
+        try:
+            img = Image.open(query_image_path).convert("RGB")
+            img_tensor = preprocess(img).unsqueeze(0).to(device)
+            with torch.no_grad():
+                query_vector = model.encode_image(img_tensor)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not process image: {e}")
+            return []
+            
+    elif query_text:
+        # --- TEXT QUERY MODE (Original Logic) ---
+        text_token = clip.tokenize([query_text]).to(device)
+        with torch.no_grad():
+            query_vector = model.encode_text(text_token)
+
+    else:
+        # No input provided
+        return []
+
+    # Normalize the query vector (CRITICAL for FAISS/L2 search)
+    query_vector = query_vector / query_vector.norm(dim=-1, keepdim=True)
+    
     # Convert to float32 NumPy array for FAISS
     query_vector_np = query_vector.cpu().numpy().astype('float32')
 
     # 2. Perform FAISS Search (Instantaneous!)
     D, I = index.search(query_vector_np, k)
     
-    # 3. Format results
+    # 3. Format results (same as before)
     results = []
     for distance, faiss_id in zip(D[0], I[0]):
         filename = filenames[faiss_id]
         
-        # FAISS uses L2 distance; convert to similarity score (0 to 1)
-        # Clamp distance at 0 to prevent numerical errors
+        # Correct similarity score formula for normalized vectors
         distance = max(0, distance)
-        similarity_score = 1 - (distance / 2) # Correct formula for normalized vectors
+        similarity_score = 1 - (distance / 2)
         
         results.append((filename, similarity_score))
 
@@ -75,30 +95,64 @@ def search_images(query, k=10): # k is set to 10 for 8-10 matches
 # NOTE: Tkinter widgets (root, results_frame, etc.) must be created before use.
 # They are created in the START THE APP section.
 
+# --- IMAGE SEARCH HANDLERS ---
+
+def select_image():
+    """Opens file dialog to select an image for query."""
+    filepath = filedialog.askopenfilename(
+        title="Select Query Image",
+        filetypes=[("Image Files", "*.jpg *.jpeg *.png *.webp")]
+    )
+    if filepath:
+        query_image_path.set(filepath)
+        # Clear the text box when an image is selected
+        search_entry.delete(0, tk.END)
+        # Immediately run search on the selected image
+        on_search() 
+
+def clear_image_query():
+    """Clears the selected image path."""
+    query_image_path.set("")
+    # Clear previous results display (optional)
+    for widget in results_frame.winfo_children():
+        widget.destroy()
+    status_label.config(text="Ready")
+
 def on_search():
-    global results_frame, status_label, root # Ensure access to global GUI objects
+    global results_frame, status_label, root 
     
-    query = search_entry.get()
-    if not query:
-        messagebox.showwarning("Warning", "Please enter a search term.")
+    text_query = search_entry.get()
+    image_query = query_image_path.get()
+    
+    if not text_query and not image_query:
+        messagebox.showwarning("Warning", "Please enter a search term OR select an image.")
         return
 
-    status_label.config(text=f"Searching for '{query}'...")
+    # Determine display text based on active search type
+    display_query = f"Image: {os.path.basename(image_query)}" if image_query else f"Text: '{text_query}'"
+    status_label.config(text=f"Searching for {display_query}...")
     root.update()
 
-    # The new search call
-    results = search_images(query)
+    # Dispatch to the core search function
+    results = search_images(query_text=text_query, query_image_path=image_query)
+
+    # --- REST OF THE DISPLAY LOGIC REMAINS THE SAME ---
     
-    # --- CLEAR PREVIOUS RESULTS ---
-    # Delete all widgets inside the results_frame
+    # Clear old results
     for widget in results_frame.winfo_children():
         widget.destroy()
 
     if not results:
         status_label.config(text="No matches found.")
         return
+        
+    # --- Loop through results and display them in columns --- 
+    # (The rest of the function remains the same as your previous working version)
+    # ... (the loop logic for displaying 4 columns of images)
+    
+    # ... (The loop logic you previously confirmed to be working)
 
-    # --- DISPLAY NEW RESULTS IN 4 COLUMNS ---
+    # Configuration for columns
     COLUMNS = 4 
     current_row_frame = None
 
@@ -197,31 +251,40 @@ def select_suggestion(event):
 
 # --- 4. START THE APP (Global Variables Defined Here) ---
 root = tk.Tk()
-root.title("My Research AI Search Tool")
-# Increase window size to accommodate 4 columns better
-root.geometry("1000x500") 
+root.title("My Research AI Search Tool (Text & Image Search)")
+root.geometry("1000x600") # Slightly larger to fit new elements
 
-# 1. Top Search Bar
+# --- New Global State for Image Search ---
+query_image_path = tk.StringVar(value="") 
+
+# 1. Top Search Bar & Buttons
 top_frame = tk.Frame(root, pady=20)
 top_frame.pack()
 
-tk.Label(top_frame, text="Search your Photos:", font=("Arial", 14)).pack(side="left", padx=5)
+# Labels and Entry (Text Input)
+tk.Label(top_frame, text="Search by Text:", font=("Arial", 14)).grid(row=0, column=0, padx=5, sticky='w')
 search_entry = tk.Entry(top_frame, width=30, font=("Arial", 14))
-search_entry.pack(side="left", padx=5)
-
-# *** ADD BINDING ***
-# Bind the KeyRelease event to the show_suggestions function
+search_entry.grid(row=0, column=1, padx=5, sticky='w')
 search_entry.bind("<KeyRelease>", show_suggestions) 
 
 btn = tk.Button(top_frame, text="Search", command=on_search, bg="blue", fg="white")
-btn.pack(side="left", padx=5)
+btn.grid(row=0, column=2, padx=5)
 
-# *** ADD LISTBOX FOR SUGGESTIONS ***
-# Initialize the Listbox, but do NOT pack/grid it yet; we will use .place() to overlay it.
-root.suggestions_listbox = tk.Listbox(root, height=5, selectmode=tk.SINGLE, 
-                                      font=("Arial", 12), relief=tk.RIDGE, bd=1,
-                                      background="white", highlightthickness=0)
-root.suggestions_listbox.place_forget() # Start hidden
+# --- Image Input Area ---
+tk.Label(top_frame, text="OR by Image:", font=("Arial", 14)).grid(row=1, column=0, padx=5, sticky='w')
+
+browse_btn = tk.Button(top_frame, text="Browse Image", command=lambda: select_image(), bg="green", fg="white")
+browse_btn.grid(row=1, column=1, padx=5, sticky='w')
+
+# Display selected file path
+image_path_label = tk.Label(top_frame, textvariable=query_image_path, anchor="w", fg="gray", wraplength=350)
+image_path_label.grid(row=1, column=2, columnspan=2, padx=5, sticky='w')
+
+# Clear button for image search
+clear_img_btn = tk.Button(top_frame, text="Clear Image", command=lambda: clear_image_query(), fg="red")
+clear_img_btn.grid(row=1, column=3, padx=5, sticky='w') 
+
+# 2. Status Bar and Results Area remain the same...
 
 # 2. Status Bar
 status_label = tk.Label(root, text="Ready", fg="gray")
