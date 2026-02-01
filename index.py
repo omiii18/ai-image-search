@@ -9,8 +9,17 @@ import json
 from collections import OrderedDict
 
 # --- CONFIGURATION ---
-BATCH_SIZE = 32 
-DEVICE = "cpu" 
+BATCH_SIZE = 64  # Safe increase for speed
+
+# Automatically select the fastest available hardware
+if torch.backends.mps.is_available():
+    DEVICE = "mps"    # Use Mac GPU (FASTEST)
+elif torch.cuda.is_available():
+    DEVICE = "cuda"   # Use NVIDIA GPU (Windows/Linux)
+else:
+    DEVICE = "cpu"    # Fallback (Slowest)
+
+print(f"Running on: {DEVICE}")
 
 # Folder paths
 EMBED_FOLDER = "embeddings"
