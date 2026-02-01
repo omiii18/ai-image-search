@@ -10,14 +10,18 @@ from PIL import Image, ImageTk
 import json
 import threading
 import time
+from PIL import Image
+import pillow_heif  # Import the library
 
+# Register HEIC opener - This makes Image.open() work with HEIC automatically!
+pillow_heif.register_heif_opener()
 # --- ENVIRONMENT FIX (OMP Error) ---
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 
 # --- CONFIGURATION ---
 DEVICE = "cpu"
-K_MATCHES = 10
+K_MATCHES = 20  # Number of search results to return
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
@@ -29,7 +33,7 @@ from index import build_index
 class ImageSearchApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("DeepSearch AI Photo Library (MCA Project)")
+        self.root.title("DeepSearch AI Photo Library")
         self.root.geometry("1100x750")
         self.root.resizable(True, True)
         
@@ -299,8 +303,13 @@ class ImageSearchApp:
             
     def _select_image_query(self):
         """Selects an image file for Image-to-Image search."""
-        filepath = filedialog.askopenfilename(title="Select Query Image",
-                                              filetypes=[("Image Files", "*.jpg *.jpeg *.png *.webp")])
+        # ADDED *.heic and *.HEIC to the filetypes list below
+        filepath = filedialog.askopenfilename(
+            title="Select Query Image",
+            filetypes=[
+                ("Image Files", "*.jpg *.jpeg *.png *.webp *.heic *.HEIC")
+            ]
+        )
         if filepath:
             self.query_image_path.set(filepath)
             self.search_entry.delete(0, tk.END) # Clear text query
