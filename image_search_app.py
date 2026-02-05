@@ -20,8 +20,9 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 
 # --- CONFIGURATION ---
-DEVICE = "cpu"
-K_MATCHES = 20  # Number of search results to return
+DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_NAME = "ViT-L/14"  # Advanced Model
+K_MATCHES = 12  # Number of search results to return
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
@@ -82,7 +83,7 @@ class ImageSearchApp:
         """Loads AI model and checks for index updates."""
         try:
             self.status_text.set("1. Loading CLIP AI Model (CPU)...")
-            self.model, self.preprocess = clip.load("ViT-B/32", device=DEVICE)
+            self.model, self.preprocess = clip.load("ViT-L/14", device=DEVICE)
             self.status_text.set("2. Model Loaded. Checking Library...")
             
             # --- Auto-indexing check (runs indexing if needed) ---
@@ -366,18 +367,25 @@ class ImageSearchApp:
         query_vector = query_vector / query_vector.norm(dim=-1, keepdim=True)
         query_vector_np = query_vector.cpu().numpy().astype('float32')
 
-        # --- 2. Perform FAISS Search ---
-        D, I = self.faiss_index.search(query_vector_np, K_MATCHES)
-        
+        # --- Perform FAISS Search ---
+        # Get results from FAISS
+        D, I = self.faiss_index.search(query_vector_np, k=K_MATCHES)
         results = []
-        for distance, faiss_id in zip(D[0], I[0]):
-            if faiss_id == -1: continue # Skip if no result found
-            filename = self.filenames[faiss_id]
-            distance = max(0, distance)
-            similarity_score = 1 - (distance / 2) # Cosine Similarity Conversion
-            results.append((filename, similarity_score))
+        for i in range(len(I[0])):
+            idx = I[0][i]
+            score = float(D[0][i]) # This is the "distance" score (lower is better in FAISS L2)
+            
+            # 'match_percentage' is the number shown on screen (e.g., 22.14)
+            # Convert L2 Distance to Cosine Similarity %: (1 - d^2/2) * 100
+            match_percentage = (1 - (score / 2)) * 100
+            
+            if match_percentage < 10.0:
+                continue
+            
+            filename = self.filenames[idx]
+            results.append((filename, match_percentage))
 
-        # --- 3. Display Results ---
+        # --- Display Results ---
         self.root.after(0, lambda: self._display_results(results, image_query)) # Update GUI safely
         self.status_text.set(f"Search complete. Displaying top {len(results)} matches.")
 
@@ -389,15 +397,17 @@ class ImageSearchApp:
         for widget in self.results_frame.winfo_children():
             widget.destroy()
 
+        start_row = 0
         if query_image_path and os.path.exists(query_image_path):
              self._display_query_image_card(query_image_path)
+             start_row = 1
             
         COLUMNS = 4 
 
         for index, (filename, score) in enumerate(results):
             
             # Start actual results display from row 1 if showing query image
-            row = (index // COLUMNS) 
+            row = (index // COLUMNS) + start_row
             col = index % COLUMNS
 
             path = os.path.join(self.image_folder_path, filename)
@@ -418,7 +428,7 @@ class ImageSearchApp:
 
                 # Show details
                 tk.Label(card, text=filename, bg="#424549", fg="#ecf0f1", font=("Inter", 9, "bold")).pack(pady=2)
-                tk.Label(card, text=f"Match: {score:.2%}", bg="#424549", fg="#2ECC71", font=("Inter", 10)).pack() 
+                tk.Label(card, text=f"Match: {score:.2f}%", bg="#424549", fg="#2ECC71", font=("Inter", 10)).pack() 
 
             except Exception as e:
                 tk.Label(card, text=f"Error loading {filename}", bg="#424549", fg="#e74c3c").pack()
