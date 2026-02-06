@@ -118,5 +118,5 @@ export KMP_DUPLICATE_LIB_OK=TRUE
 
 ---
 
-**Developed for College Project**
+**Developed for College Project:**
 *A implementation of "Local-First Semantic Search for Personal Archives"*
