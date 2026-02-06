@@ -6,3 +6,5 @@ numpy # Fundamental package for scientific computing with Python
 Pillow # Python Imaging Library (PIL) fork
 pillow-heif # HEIF image format support for Pillow (mostly found in iOS devices)
 git+https://github.com/openai/CLIP.git # OpenAI's CLIP model for image and text processing
+
+pytesseract # Python-tesseract is an optical character recognition (OCR) tool for python

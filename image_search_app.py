@@ -13,6 +13,7 @@ import time
 import shutil
 from PIL import Image
 import pillow_heif  # Import the library
+import sqlite3
 
 # Register HEIC opener - This makes Image.open() work with HEIC automatically!
 pillow_heif.register_heif_opener()
@@ -28,6 +29,7 @@ EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
 KEYWORDS_FILE = os.path.join(EMBED_FOLDER, "keywords.json")
+OCR_DB_FILE = os.path.join(EMBED_FOLDER, "ocr.db")
 SETTINGS_FILE = "settings.json"
 
 # Load the external index builder script
@@ -421,23 +423,60 @@ class ImageSearchApp:
         query_vector = query_vector / query_vector.norm(dim=-1, keepdim=True)
         query_vector_np = query_vector.cpu().numpy().astype('float32')
 
+        # --- Perform OCR Search (if text query) ---
+        ocr_matches = {}
+        if text_query and os.path.exists(OCR_DB_FILE):
+             try:
+                conn = sqlite3.connect(OCR_DB_FILE)
+                c = conn.cursor()
+                # Simple FTS search
+                # We use the query as is. For partial matches, FTS5 might need formatting (e.g. "query*")
+                # But let's try direct matching first.
+                search_term = f"{text_query}"
+                c.execute("SELECT filename FROM ocr_data WHERE text_content MATCH ?", (search_term,))
+                rows = c.fetchall()
+                for row in rows:
+                    ocr_matches[row[0]] = 100.0 # 100% match for text found
+                conn.close()
+             except Exception as e:
+                 print(f"OCR Search Error: {e}")
+
         # --- Perform FAISS Search ---
         # Get results from FAISS
         D, I = self.faiss_index.search(query_vector_np, k=K_MATCHES)
         results = []
+        
+        # Combine OCR and CLIP results
+        # Strategy: Use a dictionary to merge scores, giving priority to OCR (100%) or MAX of both.
+        
+        final_scores = ocr_matches.copy() # Start with OCR matches
+        
         for i in range(len(I[0])):
             idx = I[0][i]
-            score = float(D[0][i]) # This is the "distance" score (lower is better in FAISS L2)
+            score = float(D[0][i]) 
             
-            # 'match_percentage' is the number shown on screen (e.g., 22.14)
-            # Convert L2 Distance to Cosine Similarity %: (1 - d^2/2) * 100
+            # Convert L2 Distance to Cosine Similarity %
             match_percentage = (1 - (score / 2)) * 100
             
             if match_percentage < 10.0:
                 continue
             
             filename = self.filenames[idx]
-            results.append((filename, match_percentage))
+            
+            # If filename already in OCR matches (100%), keep it 100%. 
+            # If not, use CLIP score. 
+            if filename not in final_scores:
+                final_scores[filename] = match_percentage
+            else:
+                 # It's already 100 from OCR
+                 pass
+
+        # Sort by score descending
+        sorted_results = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
+        
+        # Take top K_MATCHES (or slightly more to show variety if we have many text matches)
+        results = sorted_results[:K_MATCHES]
+
 
         # --- Display Results ---
         self.root.after(0, lambda: self._display_results(results, image_query)) # Update GUI safely

@@ -9,6 +9,8 @@ import json
 from collections import OrderedDict
 import ssl 
 import sys
+import sqlite3
+import pytesseract
 
 # --- 1. SSL FIX FOR MAC (Prevents download errors) ---
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -28,6 +30,7 @@ EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
 KEYWORDS_FILE = os.path.join(EMBED_FOLDER, "keywords.json")
+OCR_DB_FILE = os.path.join(EMBED_FOLDER, "ocr.db")
 SETTINGS_FILE = "settings.json"
 
 if torch.backends.mps.is_available():
@@ -48,6 +51,25 @@ def load_settings():
     except:
         return None
 
+def init_ocr_db():
+    """Initializes the SQLite database with FTS5 for full-text search."""
+    conn = sqlite3.connect(OCR_DB_FILE)
+    c = conn.cursor()
+    # Create virtual table for FTS
+    c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS ocr_data USING fts5(filename, text_content)")
+    conn.commit()
+    return conn
+
+def extract_text_from_image(img):
+    """Extracts text from a PIL Image using Tesseract OCR."""
+    try:
+        text = pytesseract.image_to_string(img)
+        return text.strip()
+    except Exception as e:
+        print(f"OCR Warning: {e}")
+        return ""
+
+
 def build_index(image_folder, model, preprocess, device):
     if not image_folder or not os.path.isdir(image_folder):
         print("Error: Invalid image folder.")
@@ -59,6 +81,13 @@ def build_index(image_folder, model, preprocess, device):
 
     print(f"Indexing photos in: {image_folder}")
     
+    # Initialize OCR DB
+    ocr_conn = init_ocr_db()
+    ocr_cursor = ocr_conn.cursor()
+    # Clear existing data to avoid duplicates (optional, or we could upsert)
+    ocr_cursor.execute("DELETE FROM ocr_data") 
+    ocr_conn.commit()
+
     valid_exts = (".png", ".jpg", ".jpeg", ".webp", ".heic", ".HEIC")
     image_files = [f for f in os.listdir(image_folder) if f.lower().endswith(valid_exts)]
     total_images = len(image_files)
@@ -109,6 +138,12 @@ def build_index(image_folder, model, preprocess, device):
                 
                 image_batch.append(preprocess(img))
                 filenames_map[filename] = len(filenames_map) 
+
+                # --- OCR EXTRACTION ---
+                extracted_text = extract_text_from_image(img)
+                if extracted_text:
+                    ocr_cursor.execute("INSERT INTO ocr_data (filename, text_content) VALUES (?, ?)", (filename, extracted_text))
+                    
             except Exception as e:
                 print(f"Skipping {filename}: {e}")
 
@@ -151,6 +186,8 @@ def build_index(image_folder, model, preprocess, device):
         json.dump(top_keywords, f)
 
     print(f"\nSUCCESS: Indexed {len(filenames_map)} images with {MODEL_NAME}.")
+    ocr_conn.commit()
+    ocr_conn.close()
     return len(filenames_map)
 
 if __name__ == '__main__':
