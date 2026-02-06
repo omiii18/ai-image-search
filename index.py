@@ -27,6 +27,7 @@ BATCH_SIZE = 64
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
+KEYWORDS_FILE = os.path.join(EMBED_FOLDER, "keywords.json")
 SETTINGS_FILE = "settings.json"
 
 if torch.backends.mps.is_available():
@@ -64,6 +65,19 @@ def build_index(image_folder, model, preprocess, device):
     filenames_map = OrderedDict() 
     embeddings_list = []
 
+    # --- AUTO-TAGGING SETUP ---
+    categories = ["animal", "bird", "city", "building", "landscape", "food", "people", 
+                  "car", "beach", "mountain", "sunset", "party", "night", "flower", 
+                  "water", "snow", "forest", "indoor", "outdoor", "sky", "sea", "street",
+                  "dog", "cat", "architecture", "nature", "portrait", "vehicle", "dance", "drive"]
+    
+    text_inputs = clip.tokenize(categories).to(device)
+    with torch.no_grad():
+        text_features = model.encode_text(text_inputs)
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+    
+    category_counts = np.zeros(len(categories))
+
     print(f"Processing {total_images} images...")
 
     for i in range(0, total_images, BATCH_SIZE):
@@ -86,6 +100,13 @@ def build_index(image_folder, model, preprocess, device):
             with torch.no_grad():
                 batch_embeds = model.encode_image(image_tensor)
                 batch_embeds = batch_embeds / batch_embeds.norm(dim=-1, keepdim=True)
+                
+                # --- UPDATE CATEGORY COUNTS ---
+                similarity = (100.0 * batch_embeds @ text_features.T).softmax(dim=-1)
+                top_indices = similarity.argmax(dim=-1).cpu().numpy()
+                for idx in top_indices:
+                    category_counts[idx] += 1
+
             for embed in batch_embeds:
                 embeddings_list.append(embed.cpu().numpy().flatten())
             
@@ -104,6 +125,13 @@ def build_index(image_folder, model, preprocess, device):
 
     with open(MAPPING_FILE, "wb") as f:
         pickle.dump(list(filenames_map.keys()), f)
+
+    # --- SAVE TOP KEYWORDS ---
+    top_indices = np.argsort(category_counts)[::-1][:12] # Get top 12
+    top_keywords = [categories[i] for i in top_indices if category_counts[i] > 0]
+    
+    with open(KEYWORDS_FILE, "w") as f:
+        json.dump(top_keywords, f)
 
     print(f"\nSUCCESS: Indexed {len(filenames_map)} images with {MODEL_NAME}.")
     return len(filenames_map)

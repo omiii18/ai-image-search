@@ -26,6 +26,7 @@ K_MATCHES = 12  # Number of search results to return
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
+KEYWORDS_FILE = os.path.join(EMBED_FOLDER, "keywords.json")
 SETTINGS_FILE = "settings.json"
 
 # Load the external index builder script
@@ -53,14 +54,25 @@ class ImageSearchApp:
         self.query_image_path = tk.StringVar(value="")
         
         # --- Suggestions (User Guide) ---
-        self.SUGGESTION_KEYWORDS = ["dance", "night drives", "parties", "trips", "week's memory", 
+        self.DEFAULT_KEYWORDS = ["dance", "night drives", "parties", "trips", "week's memory", 
                                      "beach", "food", "animal", "sunset", "mountain", "car", "person"]
+        self.SUGGESTION_KEYWORDS = self._load_keywords()
         
         # Build the main GUI layout
         self._build_ui()
         
         # Start the AI/Indexing process in a separate thread (Non-blocking startup)
         threading.Thread(target=self._initialize_ai, daemon=True).start()
+
+    def _load_keywords(self):
+        """Loads dynamic keywords from file or returns defaults."""
+        if os.path.exists(KEYWORDS_FILE):
+            try:
+                with open(KEYWORDS_FILE, 'r') as f:
+                    return json.load(f)
+            except:
+                pass
+        return self.DEFAULT_KEYWORDS
 
     def _load_settings(self):
         """Loads persistent settings or creates defaults."""
@@ -125,6 +137,10 @@ class ImageSearchApp:
             try:
                 final_count = build_index(self.image_folder_path, self.model, self.preprocess, DEVICE)
                 self.status_text.set(f"4. Indexing complete. {final_count} images indexed.")
+                
+                # Reload keywords and refresh UI
+                self.SUGGESTION_KEYWORDS = self._load_keywords()
+                self.root.after(0, self._refresh_suggestions)
             except Exception as e:
                 self.status_text.set(f"Indexing failed: {e}")
         else:
@@ -182,13 +198,9 @@ class ImageSearchApp:
         suggestions_label = tk.Label(search_frame, text="Suggested Themes:", bg=BG_COLOR, fg="#99aab5", font=("Inter", 12, "bold"))
         suggestions_label.pack(anchor="w", padx=10, pady=(0, 5))
         
-        suggestion_buttons_frame = tk.Frame(search_frame, bg=BG_COLOR)
-        suggestion_buttons_frame.pack(fill="x", padx=10)
-        
-        for keyword in self.SUGGESTION_KEYWORDS:
-            btn = tk.Button(suggestion_buttons_frame, text=keyword, command=lambda k=keyword: self._quick_search(k), 
-                            bg="#5865F2", fg=FG_COLOR, font=("Inter", 10), relief=tk.FLAT, activebackground="#4F5EBD", activeforeground=FG_COLOR)
-            btn.pack(side="left", padx=5, pady=5)
+        self.suggestion_buttons_frame = tk.Frame(search_frame, bg=BG_COLOR)
+        self.suggestion_buttons_frame.pack(fill="x", padx=10)
+        self._refresh_suggestions()
             
         # B. Search Input (Entry box)
         input_frame = tk.Frame(search_frame, bg=BG_COLOR, pady=15)
@@ -232,6 +244,16 @@ class ImageSearchApp:
         
         # Update scroll region and column weights (important for responsive layout)
         self.results_frame.bind("<Configure>", lambda e: (results_canvas.configure(scrollregion=results_canvas.bbox("all")), self._update_column_weights(self.results_frame)))
+
+    def _refresh_suggestions(self):
+        """Re-populates the suggestion buttons based on current keywords."""
+        for widget in self.suggestion_buttons_frame.winfo_children():
+            widget.destroy()
+            
+        for keyword in self.SUGGESTION_KEYWORDS:
+            btn = tk.Button(self.suggestion_buttons_frame, text=keyword, command=lambda k=keyword: self._quick_search(k), 
+                            bg="#5865F2", fg="#FFFFFF", font=("Inter", 10), relief=tk.FLAT, activebackground="#4F5EBD", activeforeground="#FFFFFF")
+            btn.pack(side="left", padx=5, pady=5)
 
     def _update_column_weights(self, frame):
         """Ensures the 4 columns expand equally."""
