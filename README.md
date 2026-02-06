@@ -98,7 +98,7 @@ export KMP_DUPLICATE_LIB_OK=TRUE
 
 ---
 
-## � Project Structure
+## 🗄️ Project Structure
 
 *   `image_search_app.py`: The main entry point. Handles the GUI (Tkinter), application logic, and search workflow.
 *   `index.py`: Contains the logic for processing images and building the FAISS index.
