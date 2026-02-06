@@ -80,6 +80,10 @@ def build_index(image_folder, model, preprocess, device):
 
     print(f"Processing {total_images} images...")
 
+    # Ensure thumbnail folder exists
+    THUMBNAIL_FOLDER = ".cache/thumbnails"
+    os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
+
     for i in range(0, total_images, BATCH_SIZE):
         batch_files = image_files[i:i + BATCH_SIZE]
         image_batch = []
@@ -90,6 +94,19 @@ def build_index(image_folder, model, preprocess, device):
             path = os.path.join(image_folder, filename)
             try:
                 img = Image.open(path).convert("RGB")
+                
+                # --- THUMBNAIL GENERATION ---
+                thumb_path = os.path.join(THUMBNAIL_FOLDER, filename)
+                # Only save if it doesn't exist to save time on re-runs (optional, but good for speed)
+                # For now, let's overwrite to ensure it's up to date or if logic changes
+                img.copy().thumbnail((250, 250)) 
+                # thumbnail() modifies in place, so we need to be careful not to affect the main img for CLIP
+                # actually CLIP preprocess usually does a resize anyway, but let's be safe:
+                
+                thumb = img.copy()
+                thumb.thumbnail((250, 250))
+                thumb.save(thumb_path)
+                
                 image_batch.append(preprocess(img))
                 filenames_map[filename] = len(filenames_map) 
             except Exception as e:

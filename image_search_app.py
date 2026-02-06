@@ -10,6 +10,7 @@ from PIL import Image, ImageTk
 import json
 import threading
 import time
+import shutil
 from PIL import Image
 import pillow_heif  # Import the library
 
@@ -188,6 +189,8 @@ class ImageSearchApp:
         # Select Folder Button 
         tk.Button(settings_frame, text="Select Folder", command=self._select_folder, bg=ACCENT_COLOR, fg=FG_COLOR, font=("Inter", 10, "bold"), relief=tk.FLAT).pack(side="left", padx=10)
         
+        tk.Button(settings_frame, text="Clear Cache", command=self._clear_cache, bg="#e74c3c", fg=FG_COLOR, font=("Inter", 10, "bold"), relief=tk.FLAT).pack(side="right", padx=10)
+        
         tk.Button(settings_frame, text="Re-Index", command=self.reindex_thread, bg="#f39c12", fg="#000000", font=("Inter", 10, "bold"), relief=tk.FLAT).pack(side="right", padx=10)
         
         # 2. Search & Suggestions Frame (Center Top)
@@ -274,6 +277,35 @@ class ImageSearchApp:
             self.dir_label.config(text=self._get_display_path())
             self._save_settings()
             self.reindex_thread() # Start indexing after setting folder
+            
+    def _clear_cache(self):
+        """Deletes thumbnails and AI index, resetting the app state."""
+        if not messagebox.askyesno("Clear Cache", "This will delete all indexed data and thumbnails. You will need to re-index your photos to search again.\n\nContinue?"):
+            return
+            
+        try:
+            # 1. Clear directories
+            if os.path.exists(EMBED_FOLDER):
+                shutil.rmtree(EMBED_FOLDER)
+            if os.path.exists(".cache"):
+                shutil.rmtree(".cache")
+                
+            # 2. Reset runtime state
+            self.faiss_index = None
+            self.filenames = []
+            self.SUGGESTION_KEYWORDS = self.DEFAULT_KEYWORDS
+            
+            # 3. Re-initialize folders
+            os.makedirs(EMBED_FOLDER, exist_ok=True)
+            
+            # 4. Update UI
+            self._refresh_suggestions()
+            self._display_results([]) # Clear results
+            self.status_text.set("Cache cleared. Please re-index to enable search.")
+            messagebox.showinfo("Success", "Cache cleared successfully.")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to clear cache: {e}")
             
     def _quick_search(self, query):
         """Sets the query entry and runs search immediately."""
@@ -439,9 +471,25 @@ class ImageSearchApp:
             card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             
             # --- Image Loading ---
+            # THUMBNAIL CACHING LOGIC
+            THUMBNAIL_FOLDER = ".cache/thumbnails"
+            thumb_path = os.path.join(THUMBNAIL_FOLDER, filename)
+            
             try:
-                img = Image.open(path)
-                img.thumbnail((180, 180)) 
+                img = None
+                # Try to load thumbnail first
+                if os.path.exists(thumb_path):
+                    try:
+                        img = Image.open(thumb_path)
+                        img.load() # Force load to verify validity
+                    except:
+                        img = None # corrupted or failed load
+
+                # Fallback to original if thumbnail missing
+                if img is None:
+                    img = Image.open(path)
+                    img.thumbnail((180, 180)) 
+                
                 # Store PhotoImage as an attribute to prevent garbage collection
                 card.photo = ImageTk.PhotoImage(img) 
 
