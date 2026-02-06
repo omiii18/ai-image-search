@@ -1,8 +1,8 @@
-torch
-torchvision
-torchaudio
-faiss-cpu
-numpy
-Pillow
-pillow-heif
-git+https://github.com/openai/CLIP.git
+torch # PyTorch - an open-source machine learning library for Python 
+torchvision # Computer vision library for PyTorch
+torchaudio # Audio processing library for PyTorch
+faiss-cpu # Library for efficient similarity search and clustering of dense vectors
+numpy # Fundamental package for scientific computing with Python
+Pillow # Python Imaging Library (PIL) fork
+pillow-heif # HEIF image format support for Pillow (mostly found in iOS devices)
+git+https://github.com/openai/CLIP.git # OpenAI's CLIP model for image and text processing
