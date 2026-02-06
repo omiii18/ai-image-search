@@ -1,0 +1,8 @@
+torch
+torchvision
+torchaudio
+faiss-cpu
+numpy
+Pillow
+pillow-heif
+git+https://github.com/openai/CLIP.git
