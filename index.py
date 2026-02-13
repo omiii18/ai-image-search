@@ -11,6 +11,7 @@ import ssl
 import sys
 import sqlite3
 import pytesseract
+from tqdm import tqdm  # Progress bar
 
 # --- 1. SSL FIX FOR MAC (Prevents download errors) ---
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -23,9 +24,9 @@ except ImportError:
     pass
 
 # --- CONFIGURATION ---
-# "ViT-L/14" is the Advanced Model (Smarter but slightly slower)
-MODEL_NAME = "ViT-L/14" 
-BATCH_SIZE = 64  
+# Switching to Base model for SPEED. 
+MODEL_NAME = "ViT-B/32" 
+BATCH_SIZE = 32 # Lower batch size slightly for safety
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
@@ -61,16 +62,33 @@ def init_ocr_db():
     return conn
 
 def extract_text_from_image(img):
-    """Extracts text from a PIL Image using Tesseract OCR."""
+    """Extracts text from a PIL Image using Tesseract OCR, optimized for speed."""
     try:
+        # Optimization: Resize for OCR if image is huge (e.g., > 2000px)
+        width, height = img.size
+        if width > 1500 or height > 1500:
+            scale_factor = 1500 / max(width, height)
+            new_size = (int(width * scale_factor), int(height * scale_factor))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+            
         text = pytesseract.image_to_string(img)
         return text.strip()
     except Exception as e:
-        print(f"OCR Warning: {e}")
         return ""
 
 
-def build_index(image_folder, model, preprocess, device):
+def build_index(image_folder, model, preprocess, device, progress_callback=None):
+    """
+    Builds the index.
+    
+    Args:
+        image_folder (str): Path to photos.
+        model: Loaded CLIP model.
+        preprocess: Loaded CLIP preprocess transform.
+        device: 'cpu', 'cuda', or 'mps'.
+        progress_callback (function, optional): A function that takes (current, total, message) 
+                                                to update UI progress bars.
+    """
     if not image_folder or not os.path.isdir(image_folder):
         print("Error: Invalid image folder.")
         return 0
@@ -84,13 +102,17 @@ def build_index(image_folder, model, preprocess, device):
     # Initialize OCR DB
     ocr_conn = init_ocr_db()
     ocr_cursor = ocr_conn.cursor()
-    # Clear existing data to avoid duplicates (optional, or we could upsert)
     ocr_cursor.execute("DELETE FROM ocr_data") 
     ocr_conn.commit()
 
     valid_exts = (".png", ".jpg", ".jpeg", ".webp", ".heic", ".HEIC")
     image_files = [f for f in os.listdir(image_folder) if f.lower().endswith(valid_exts)]
     total_images = len(image_files)
+    
+    if total_images == 0:
+        print("No valid images found.")
+        return 0
+        
     filenames_map = OrderedDict() 
     embeddings_list = []
 
@@ -113,31 +135,35 @@ def build_index(image_folder, model, preprocess, device):
     THUMBNAIL_FOLDER = ".cache/thumbnails"
     os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
+    # Use tqdm for CLI progress bar
+    pbar = tqdm(total=total_images, unit="img")
+    
+    processed_count = 0
+    
     for i in range(0, total_images, BATCH_SIZE):
         batch_files = image_files[i:i + BATCH_SIZE]
         image_batch = []
+        valid_filenames_in_batch = []
         
         for filename in batch_files:
-            if filename.startswith("._"): continue # Skip Mac ghost files
+            if filename.startswith("._"): continue 
 
             path = os.path.join(image_folder, filename)
             try:
+                # Open image
                 img = Image.open(path).convert("RGB")
+                
+                # --- OPTIMIZATION: Resize ONCE ---
+                img.thumbnail((1024, 1024)) 
                 
                 # --- THUMBNAIL GENERATION ---
                 thumb_path = os.path.join(THUMBNAIL_FOLDER, filename)
-                # Only save if it doesn't exist to save time on re-runs (optional, but good for speed)
-                # For now, let's overwrite to ensure it's up to date or if logic changes
-                img.copy().thumbnail((250, 250)) 
-                # thumbnail() modifies in place, so we need to be careful not to affect the main img for CLIP
-                # actually CLIP preprocess usually does a resize anyway, but let's be safe:
-                
                 thumb = img.copy()
                 thumb.thumbnail((250, 250))
                 thumb.save(thumb_path)
                 
                 image_batch.append(preprocess(img))
-                filenames_map[filename] = len(filenames_map) 
+                valid_filenames_in_batch.append(filename)
 
                 # --- OCR EXTRACTION ---
                 extracted_text = extract_text_from_image(img)
@@ -145,7 +171,14 @@ def build_index(image_folder, model, preprocess, device):
                     ocr_cursor.execute("INSERT INTO ocr_data (filename, text_content) VALUES (?, ?)", (filename, extracted_text))
                     
             except Exception as e:
-                print(f"Skipping {filename}: {e}")
+                pass
+            
+            pbar.update(1)
+            processed_count += 1
+            
+            # Update UI if callback provided
+            if progress_callback:
+                progress_callback(processed_count, total_images, f"Indexing {filename}...")
 
         if image_batch:
             image_tensor = torch.stack(image_batch).to(device)
@@ -159,18 +192,19 @@ def build_index(image_folder, model, preprocess, device):
                 for idx in top_indices:
                     category_counts[idx] += 1
 
-            for embed in batch_embeds:
+            for embed, fname in zip(batch_embeds, valid_filenames_in_batch):
                 embeddings_list.append(embed.cpu().numpy().flatten())
+                filenames_map[fname] = len(filenames_map) 
             
-            print(f"  -> Processed {len(filenames_map)} / {total_images}...")
-            
+    pbar.close()
+
     if not embeddings_list:
         print("No valid images found.")
         return 0
 
     # Save FAISS Index
-    D = embeddings_list[0].shape[0] 
     embeddings_matrix = np.stack(embeddings_list).astype('float32')
+    D = embeddings_matrix.shape[1] 
     index = faiss.IndexFlatL2(D)
     index.add(embeddings_matrix)
     faiss.write_index(index, INDEX_FILE)
@@ -179,7 +213,7 @@ def build_index(image_folder, model, preprocess, device):
         pickle.dump(list(filenames_map.keys()), f)
 
     # --- SAVE TOP KEYWORDS ---
-    top_indices = np.argsort(category_counts)[::-1][:12] # Get top 12
+    top_indices = np.argsort(category_counts)[::-1][:12] 
     top_keywords = [categories[i] for i in top_indices if category_counts[i] > 0]
     
     with open(KEYWORDS_FILE, "w") as f:

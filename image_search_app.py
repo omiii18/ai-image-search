@@ -22,7 +22,7 @@ os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 
 # --- CONFIGURATION ---
 DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_NAME = "ViT-L/14"  # Advanced Model
+MODEL_NAME = "ViT-B/32"  # Changed to Base model for SPEED
 K_MATCHES = 12  # Number of search results to return
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
@@ -131,8 +131,8 @@ class ImageSearchApp:
     def _initialize_ai(self):
         """Loads AI model and checks for index updates."""
         try:
-            self.status_text.set("1. Loading CLIP AI Model (CPU)...")
-            self.model, self.preprocess = clip.load("ViT-L/14", device=DEVICE)
+            self.status_text.set("1. Loading AI MODEL ...")
+            self.model, self.preprocess = clip.load(MODEL_NAME, device=DEVICE)
             self.status_text.set("2. Model Loaded. Checking Library...")
             
             # --- Auto-indexing check (runs indexing if needed) ---
@@ -145,13 +145,19 @@ class ImageSearchApp:
             self.status_text.set(f"FATAL ERROR: Initialization failed. Check dependencies. {e}")
             messagebox.showerror("Fatal Error", str(e))
 
+    def _update_progress(self, current, total, message):
+        """Callback to update the UI status text from the indexer."""
+        percent = int((current / total) * 100)
+        self.status_text.set(f"{message} ({percent}%)")
+        self.root.update_idletasks() # Force UI refresh
+
     def _check_and_index_photos(self):
         """Checks for new files and updates/loads the FAISS index."""
         if not self.image_folder_path or not self.model: return
 
         # 1. Get file count in user folder
         try:
-            image_files = [f for f in os.listdir(self.image_folder_path) if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
+            image_files = [f for f in os.listdir(self.image_folder_path) if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".heic"))]
             current_file_count = len(image_files)
         except FileNotFoundError:
             self.status_text.set("Error: Photo folder not found. Please re-select.")
@@ -172,7 +178,14 @@ class ImageSearchApp:
             
             # --- REBUILD INDEX ---
             try:
-                final_count = build_index(self.image_folder_path, self.model, self.preprocess, DEVICE)
+                # Adding progress callback connection here!
+                final_count = build_index(
+                    self.image_folder_path, 
+                    self.model, 
+                    self.preprocess, 
+                    DEVICE,
+                    progress_callback=self._update_progress
+                )
                 self.status_text.set(f"4. Indexing complete. {final_count} images indexed.")
                 
                 # Reload keywords and refresh UI
@@ -191,9 +204,25 @@ class ImageSearchApp:
         """Loads the FAISS index and mapping into memory."""
         try:
             self.faiss_index = faiss.read_index(INDEX_FILE)
+            
+            # --- CRITICAL FIX: Dimension Check ---
+            # If the loaded index has a different dimension than the current model,
+            # we MUST invalidate it to prevent crashing.
+            # ViT-B/32 has 512 dimensions. ViT-L/14 has 768.
+            expected_dim = 512 # ViT-B/32
+            if MODEL_NAME == "ViT-L/14": expected_dim = 768
+            
+            if self.faiss_index.d != expected_dim:
+                print(f"Dimension Mismatch! Index: {self.faiss_index.d}, Model: {expected_dim}. Re-indexing required.")
+                self.faiss_index = None
+                self.filenames = []
+                self.status_text.set("Model Changed. Please CLICK 'Re-Index' to update.")
+                return
+
             with open(MAPPING_FILE, "rb") as f:
                 self.filenames = pickle.load(f)
-        except Exception:
+        except Exception as e:
+            print(f"Error loading index: {e}")
             self.faiss_index = None
             self.filenames = []
 
@@ -369,8 +398,8 @@ class ImageSearchApp:
             self._save_settings()
             self.reindex_thread()
             
-    def _clear_cache(self):
-        if not messagebox.askyesno("Clear Cache", "Delete all index data? You will need to re-index."):
+    def _clear_cache(self, silent=False):
+        if not silent and not messagebox.askyesno("Clear Cache", "Delete all index data? You will need to re-index."):
             return
         try:
             if os.path.exists(EMBED_FOLDER): shutil.rmtree(EMBED_FOLDER)
@@ -381,9 +410,9 @@ class ImageSearchApp:
             os.makedirs(EMBED_FOLDER, exist_ok=True)
             self._refresh_suggestions()
             self._display_results([])
-            self.status_text.set("Cache cleared.")
+            if not silent: self.status_text.set("Cache cleared.")
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            if not silent: messagebox.showerror("Error", str(e))
             
     def _quick_search(self, query):
         self.search_text_var.set(query)
@@ -552,8 +581,21 @@ class ImageSearchApp:
         except Exception as e:
             tk.Label(card, text="Error", bg=bg_color, fg="red").pack()
 
+    def _on_closing(self):
+        """Cleanup on exit."""
+        try:
+            # Auto-clear cache on exit as requested
+            self._clear_cache(silent=True)
+            print("Cache cleared on exit.")
+        except:
+            pass
+        self.root.destroy()
+        sys.exit(0)
+
 if __name__ == "__main__":
     if not os.path.exists(EMBED_FOLDER): os.makedirs(EMBED_FOLDER)
     root = tk.Tk()
     app = ImageSearchApp(root)
+    # Bind close event
+    root.protocol("WM_DELETE_WINDOW", app._on_closing)
     root.mainloop()
