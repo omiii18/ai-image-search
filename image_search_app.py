@@ -14,8 +14,29 @@ import shutil
 import pillow_heif  # Import the library
 import sqlite3
 import platform
+import sys
+import multiprocessing
 
-# Register HEIC opener - This makes Image.open() work with HEIC automatically!
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+# --- APP PATH FIX FOR MAC BUNDLE ---
+if getattr(sys, 'frozen', False):
+    # If running as a bundle, change CWD to the folder containing the .app
+    # This ensures settings/embeddings are saved next to the app, not in the system root
+    bundle_dir = os.path.dirname(sys.executable)
+    if ".app/Contents/MacOS" in bundle_dir:
+        # Move up 3 levels to get out of the bundle to the folder it sits in
+        os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(bundle_dir))))
+    else:
+        os.chdir(bundle_dir)
+
+# Register HEIC opener
 pillow_heif.register_heif_opener()
 # --- ENVIRONMENT FIX (OMP Error) ---
 os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
@@ -27,7 +48,7 @@ K_MATCHES = 12  # Number of search results to return
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
-KEYWORDS_FILE = os.path.join(EMBED_FOLDER, "keywords.json")
+KEYWORDS_FILE = resource_path("keywords.json") # This stays inside the bundle
 OCR_DB_FILE = os.path.join(EMBED_FOLDER, "ocr.db")
 SETTINGS_FILE = "settings.json"
 
@@ -584,15 +605,21 @@ class ImageSearchApp:
     def _on_closing(self):
         """Cleanup on exit."""
         try:
+            # Reset folder path so it doesn't persist to next session
+            self.image_folder_path = ""
+            self._save_settings()
+            
             # Auto-clear cache on exit as requested
             self._clear_cache(silent=True)
-            print("Cache cleared on exit.")
-        except:
-            pass
+            print("Settings reset and cache cleared on exit.")
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+        
         self.root.destroy()
         sys.exit(0)
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     if not os.path.exists(EMBED_FOLDER): os.makedirs(EMBED_FOLDER)
     root = tk.Tk()
     app = ImageSearchApp(root)

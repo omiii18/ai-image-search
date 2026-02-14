@@ -7,6 +7,17 @@ embeddings/
 *.pkl
 *.index
 
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Config
+settings.json
+
+# Cache
+.cache/
+
 # Logs and system files
 *.log
 .DS_Store
