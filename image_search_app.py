@@ -11,24 +11,24 @@ import json
 import threading
 import time
 import shutil
-import pillow_heif  # Import the library
+import pillow_heif  # HEIC support
 import sqlite3
 import platform
 import sys
 import multiprocessing
 
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
+    """Get absolute path for resources."""
     try:
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# --- APP PATH FIX FOR MAC BUNDLE ---
+# --- Mac Bundle Fix ---
 if getattr(sys, 'frozen', False):
-    # If running as a bundle, change CWD to the folder containing the .app
-    # This ensures settings/embeddings are saved next to the app, not in the system root
+    # Adjust CWD for bundled apps to save data locally
+    # instead of system root
     bundle_dir = os.path.dirname(sys.executable)
     if ".app/Contents/MacOS" in bundle_dir:
         # Move up 3 levels to get out of the bundle to the folder it sits in
@@ -38,32 +38,29 @@ if getattr(sys, 'frozen', False):
 
 # Register HEIC opener
 pillow_heif.register_heif_opener()
-# --- ENVIRONMENT FIX (OMP Error) ---
+# --- Environment Fix ---
 os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 
-# --- CONFIGURATION ---
+# --- Configuration ---
 DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_NAME = "ViT-B/32"  # Changed to Base model for SPEED
-K_MATCHES = 12  # Number of search results to return
+MODEL_NAME = "ViT-B/32"  # Speed optimized
+K_MATCHES = 12 # Number of results to display
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
-KEYWORDS_FILE = resource_path("keywords.json") # This stays inside the bundle
+KEYWORDS_FILE = resource_path("keywords.json")
 OCR_DB_FILE = os.path.join(EMBED_FOLDER, "ocr.db")
 SETTINGS_FILE = "settings.json"
 
-# Load the external index builder script
+# Import index builder
 try:
     from index import build_index 
 except ImportError:
-    # Fallback if index.py is missing or has issues (for robustness)
+    # Fallback if indexing fails
     def build_index(*args): return 0
 
 class ModernButton(tk.Label):
-    """
-    A custom button using tk.Label to ensure consistent styling 
-    across platforms (especially macOS where buttons are restrictive).
-    """
+    """Custom consistent button styling."""
     def __init__(self, parent, text, command, bg="#5865F2", fg="white", hover_bg="#4752C4", font=("Inter", 10, "bold"), padx=15, pady=8, min_width=0):
         self.bg_color = bg
         self.hover_bg = hover_bg
@@ -72,8 +69,7 @@ class ModernButton(tk.Label):
         
         super().__init__(parent, text=text, bg=bg, fg=fg, font=font, padx=padx, pady=pady, cursor="hand2")
         
-        # Rounded corners visual trick (optional, keeping it simple for now with just colors)
-        # To make it look more button-like:
+        # Bind events
         
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
@@ -94,24 +90,24 @@ class ImageSearchApp:
         self.root = root
         self.root.title("DeepSearch AI Photo Library")
         self.root.geometry("1100x800")
-        self.root.eval('tk::PlaceWindow . center') # Center on screen
+        self.root.eval('tk::PlaceWindow . center') # Center window
 
-        # --- Persistent State ---
+        # --- State ---
         self.settings = self._load_settings()
         self.image_folder_path = self.settings.get("image_folder_path", "")
         
-        # --- AI State ---
+        # --- AI ---
         self.model = None
         self.preprocess = None
         self.faiss_index = None
         self.filenames = []
         
-        # --- GUI Variables ---
+        # --- GUI ---
         self.status_text = tk.StringVar(value="Initializing...")
         self.query_image_path = tk.StringVar(value="")
         self.search_text_var = tk.StringVar()
         
-        # --- Suggestions (User Guide) ---
+        # --- Suggestions ---
         self.DEFAULT_KEYWORDS = ["dance", "night drives", "parties", "trips", "week's memory", 
                                      "beach", "food", "animal", "sunset", "mountain", "car", "person"]
         self.SUGGESTION_KEYWORDS = self._load_keywords()
@@ -119,11 +115,11 @@ class ImageSearchApp:
         # Build the main GUI layout
         self._build_ui()
         
-        # Start the AI/Indexing process in a separate thread (Non-blocking startup)
+        # Non-blocking AI init
         threading.Thread(target=self._initialize_ai, daemon=True).start()
 
     def _load_keywords(self):
-        """Loads dynamic keywords from file or returns defaults."""
+        """Load keywords from file."""
         if os.path.exists(KEYWORDS_FILE):
             try:
                 with open(KEYWORDS_FILE, 'r') as f:
@@ -133,7 +129,7 @@ class ImageSearchApp:
         return self.DEFAULT_KEYWORDS
 
     def _load_settings(self):
-        """Loads persistent settings or creates defaults."""
+        """Load settings."""
         try:
             with open(SETTINGS_FILE, 'r') as f:
                 return json.load(f)
@@ -141,7 +137,7 @@ class ImageSearchApp:
             return {"image_folder_path": ""}
             
     def _save_settings(self):
-        """Saves persistent settings."""
+        """Save settings."""
         self.settings["image_folder_path"] = self.image_folder_path
         try:
             with open(SETTINGS_FILE, 'w') as f:
@@ -150,13 +146,13 @@ class ImageSearchApp:
             print(f"Error saving settings: {e}")
 
     def _initialize_ai(self):
-        """Loads AI model and checks for index updates."""
+        """Load AI model."""
         try:
             self.status_text.set("1. Loading AI MODEL ...")
             self.model, self.preprocess = clip.load(MODEL_NAME, device=DEVICE)
             self.status_text.set("2. Model Loaded. Checking Library...")
             
-            # --- Auto-indexing check (runs indexing if needed) ---
+            # --- Check/Index photos ---
             if self.image_folder_path and os.path.isdir(self.image_folder_path):
                 self._check_and_index_photos()
             else:
@@ -167,13 +163,13 @@ class ImageSearchApp:
             messagebox.showerror("Fatal Error", str(e))
 
     def _update_progress(self, current, total, message):
-        """Callback to update the UI status text from the indexer."""
+        """Update UI progress."""
         percent = int((current / total) * 100)
         self.status_text.set(f"{message} ({percent}%)")
         self.root.update_idletasks() # Force UI refresh
 
     def _check_and_index_photos(self):
-        """Checks for new files and updates/loads the FAISS index."""
+        """Check files and update index."""
         if not self.image_folder_path or not self.model: return
 
         # 1. Get file count in user folder
@@ -184,7 +180,7 @@ class ImageSearchApp:
             self.status_text.set("Error: Photo folder not found. Please re-select.")
             return
             
-        # 2. Load existing index info
+        # 2. Load existing info
         indexed_count = 0
         try:
             temp_index = faiss.read_index(INDEX_FILE)
@@ -197,9 +193,9 @@ class ImageSearchApp:
         elif current_file_count > indexed_count:
             self.status_text.set(f"3. Found {current_file_count - indexed_count} new images. Auto-indexing...")
             
-            # --- REBUILD INDEX ---
+            # --- Rebuild Index ---
             try:
-                # Adding progress callback connection here!
+                # Progress callback
                 final_count = build_index(
                     self.image_folder_path, 
                     self.model, 
@@ -217,20 +213,18 @@ class ImageSearchApp:
         else:
             self.status_text.set("3. Index up to date.")
         
-        # 4. Load the final index into memory for searching
+        # 4. Load final index
         self._load_search_index()
         self.status_text.set(f"Ready. {self.faiss_index.ntotal if self.faiss_index else 0} images searchable.")
         
     def _load_search_index(self):
-        """Loads the FAISS index and mapping into memory."""
+        """Load FAISS index."""
         try:
             self.faiss_index = faiss.read_index(INDEX_FILE)
             
-            # --- CRITICAL FIX: Dimension Check ---
-            # If the loaded index has a different dimension than the current model,
-            # we MUST invalidate it to prevent crashing.
-            # ViT-B/32 has 512 dimensions. ViT-L/14 has 768.
-            expected_dim = 512 # ViT-B/32
+            # --- Dimension Check ---
+            # ViT-B/32 has 512, ViT-L/14 has 768.
+            expected_dim = 512 
             if MODEL_NAME == "ViT-L/14": expected_dim = 768
             
             if self.faiss_index.d != expected_dim:
@@ -247,17 +241,17 @@ class ImageSearchApp:
             self.faiss_index = None
             self.filenames = []
 
-    # --- UI COMPONENTS & HANDLERS ---
+    # --- UI ---
     
     def _build_ui(self):
         # Modern Dark Theme Aesthetics
         self.colors = {
-            "bg": "#121212",        # Very dark grey (almost black)
-            "header": "#1E1E1E",    # Slightly lighter grey
-            "card": "#252525",      # Card background
-            "accent": "#6C5CE7",    # Blurple/Soft Purple
-            "text": "#E1E1E6",      # Off-white
-            "subtext": "#A1A1AA",   # Light grey
+            "bg": "#121212",
+            "header": "#1E1E1E",
+            "card": "#252525",
+            "accent": "#6C5CE7",
+            "text": "#E1E1E6",
+            "subtext": "#A1A1AA",
             "danger": "#FF5252",
             "success": "#00E676",
             "input_bg": "#2C2C2C"
@@ -311,7 +305,7 @@ class ImageSearchApp:
         search_frame = tk.Frame(parent, bg=self.colors["bg"], pady=20, padx=20)
         search_frame.pack(fill="x")
         
-        # Search Box Container (Rounded look via Frame)
+        # Search Box Container
         input_container = tk.Frame(search_frame, bg=self.colors["input_bg"], padx=10, pady=5)
         input_container.pack(fill="x", expand=True)
 
@@ -322,7 +316,7 @@ class ImageSearchApp:
         self.search_entry = tk.Entry(input_container, textvariable=self.search_text_var, 
                                      font=("Inter", 14), bd=0, relief=tk.FLAT, 
                                      bg=self.colors["input_bg"], fg=self.colors["text"], 
-                                     insertbackground=self.colors["text"]) # Caret color
+                                     insertbackground=self.colors["text"])
         self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
         # self.search_entry.bind("<Return>", lambda e: self.search_thread())
         self.search_entry.bind("<KeyRelease>", self._show_suggestions) 
@@ -345,7 +339,7 @@ class ImageSearchApp:
         self.suggestions_listbox.place_forget()
 
     def _build_results_area(self, parent):
-        # Canvas for scrolling
+        # Scrolling Canvas
         self.results_canvas = tk.Canvas(parent, bg=self.colors["bg"], borderwidth=0, highlightthickness=0)
         self.results_canvas.pack(side="left", fill="both", expand=True, padx=20, pady=10)
         
@@ -361,22 +355,21 @@ class ImageSearchApp:
         # BINDINGS FOR SCROLLING
         self._bind_mousewheel(self.results_canvas)
         self._bind_mousewheel(self.results_frame)
-        self._bind_mousewheel(self.root) # Bind root to catch scroll anywhere
+        self._bind_mousewheel(self.root) # Global scroll
 
         # Layout management
         self.results_frame.bind("<Configure>", self._on_frame_configure)
         self.results_canvas.bind("<Configure>", self._on_canvas_configure)
 
     def _bind_mousewheel(self, widget):
-        """Binds mousewheel events for Windows, Mac, and Linux."""
+        """Cross-platform scroll binding."""
         widget.bind("<MouseWheel>", self._on_mousewheel)
         widget.bind("<Button-4>", self._on_mousewheel) # Linux Scroll Up
         widget.bind("<Button-5>", self._on_mousewheel) # Linux Scroll Down
 
     def _on_mousewheel(self, event):
-        """Handles scroll events cross-platform."""
+        """Handle scroll."""
         if platform.system() == "Darwin": # macOS
-             # Delta is usually larger on Mac, so divide
              self.results_canvas.yview_scroll(int(-1*(event.delta)), "units")
         elif event.num == 4: # Linux Up
             self.results_canvas.yview_scroll(-1, "units")
@@ -395,14 +388,13 @@ class ImageSearchApp:
         self.results_canvas.itemconfig(self.canvas_window, width=canvas_width)
 
     def _refresh_suggestions(self):
-        """Re-populates the suggestion buttons."""
+        """Refresh suggestion buttons."""
         for widget in self.suggestion_buttons_frame.winfo_children():
             widget.destroy()
             
         tk.Label(self.suggestion_buttons_frame, text="Quick Tags:", bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 10, "bold")).pack(side="left", padx=(0, 10))
-            
-        for keyword in self.SUGGESTION_KEYWORDS[:8]: # Show top 8
-            # Using ModernButton instead of tk.Button for visibility
+        
+        for keyword in self.SUGGESTION_KEYWORDS[:8]: # Show top 8 keywords
             btn = ModernButton(self.suggestion_buttons_frame, text=keyword, command=lambda k=keyword: self._quick_search(k), 
                             bg="#2D2D2D", fg=self.colors["text"], hover_bg="#3D3D3D", padx=10, pady=4, font=("Inter", 9))
             btn.pack(side="left", padx=4)
@@ -473,7 +465,6 @@ class ImageSearchApp:
             self.search_thread()
 
     def search_thread(self):
-        # Clear conflicts
         if self.search_text_var.get(): self.query_image_path.set("")
         threading.Thread(target=self._run_search, daemon=True).start()
         
@@ -492,7 +483,7 @@ class ImageSearchApp:
 
         self.status_text.set(f"Searching...")
         
-        # --- 1. Get Query Vector ---
+        # --- Get Query Vector ---
         query_vector = None
         if image_query:
             try:
@@ -544,15 +535,12 @@ class ImageSearchApp:
         for widget in self.results_frame.winfo_children(): widget.destroy()
 
         columns = 4
-        # Dynamic grid configuration based on width could go here, but fixed 4 is fine for now
         
         # If Query Image, show it
         row_offset = 0
         if query_image_path:
             self._render_card(query_image_path, "Query Image", "Source", 0, 0, highlight=True)
-            row_offset = 1 # Push results down or shift them? Let's just create a separate section or reuse grid logic
-             # Ideally we want the query image to "push" the flow, but grid makes that hard without advanced logic.
-             # Simple approach: Standard results grid.
+            row_offset = 1
         
         for index, (filename, score) in enumerate(results):
             path = os.path.join(self.image_folder_path, filename)
@@ -565,8 +553,8 @@ class ImageSearchApp:
         self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
 
     def _render_card(self, path, title, subtitle, row, col, highlight=False):
-        """Helper to create a unified result card."""
-        bg_color = self.colors["card"] if not highlight else "#3D2C4D" # Dark purple if highlight
+        """Create result card."""
+        bg_color = self.colors["card"] if not highlight else "#3D2C4D"
         
         card = tk.Frame(self.results_frame, bg=bg_color, padx=10, pady=10)
         card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
@@ -585,15 +573,13 @@ class ImageSearchApp:
             if not img:
                 img = Image.open(path)
                 # Aspect Ratio Cover
-                img = ImageOps.fit(img, (220, 160), Image.Resampling.LANCZOS)
-                # Optional: Save thumbnail for next time
-                # img.save(thumb_path) 
+                img = ImageOps.fit(img, (220, 160), Image.Resampling.LANCZOS) 
 
-            # Create rounded mask (simulated by not drawing corners? No, standard PIL rect)
+            # Create rounded mask
             photo = ImageTk.PhotoImage(img)
             
             lbl_img = tk.Label(card, image=photo, bg=bg_color)
-            lbl_img.image = photo # Keep ref
+            lbl_img.image = photo # Retain reference
             lbl_img.pack()
             
             tk.Label(card, text=title[:20], bg=bg_color, fg=self.colors["text"], font=("Inter", 9, "bold")).pack(pady=(5,0))
@@ -603,13 +589,13 @@ class ImageSearchApp:
             tk.Label(card, text="Error", bg=bg_color, fg="red").pack()
 
     def _on_closing(self):
-        """Cleanup on exit."""
+        """Exit cleanup."""
         try:
-            # Reset folder path so it doesn't persist to next session
+            # Reset folder path on exit
             self.image_folder_path = ""
             self._save_settings()
             
-            # Auto-clear cache on exit as requested
+            # cache clear
             self._clear_cache(silent=True)
             print("Settings reset and cache cleared on exit.")
         except Exception as e:

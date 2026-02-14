@@ -11,12 +11,12 @@ import ssl
 import sys
 import sqlite3
 import pytesseract
-from tqdm import tqdm  # Progress bar
+from tqdm import tqdm  # Progress UI
 
-# --- 1. SSL FIX FOR MAC (Prevents download errors) ---
+# --- SSL Fix ---
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# --- 2. HEIC SUPPORT ---
+# --- HEIC Support ---
 try:
     import pillow_heif
     pillow_heif.register_heif_opener()
@@ -24,9 +24,9 @@ except ImportError:
     pass
 
 # --- CONFIGURATION ---
-# Switching to Base model for SPEED. 
+# Optimized for speed
 MODEL_NAME = "ViT-B/32" 
-BATCH_SIZE = 32 # Lower batch size slightly for safety
+BATCH_SIZE = 32 # Safe batch size
 EMBED_FOLDER = "embeddings"
 INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
 MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
@@ -53,18 +53,17 @@ def load_settings():
         return None
 
 def init_ocr_db():
-    """Initializes the SQLite database with FTS5 for full-text search."""
+    """Init SQLite with FTS5."""
     conn = sqlite3.connect(OCR_DB_FILE)
     c = conn.cursor()
-    # Create virtual table for FTS
     c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS ocr_data USING fts5(filename, text_content)")
     conn.commit()
     return conn
 
 def extract_text_from_image(img):
-    """Extracts text from a PIL Image using Tesseract OCR, optimized for speed."""
+    """Extract text via Tesseract."""
     try:
-        # Optimization: Resize for OCR if image is huge (e.g., > 2000px)
+        # Resize large images
         width, height = img.size
         if width > 1500 or height > 1500:
             scale_factor = 1500 / max(width, height)
@@ -82,12 +81,11 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
     Builds the index.
     
     Args:
-        image_folder (str): Path to photos.
-        model: Loaded CLIP model.
-        preprocess: Loaded CLIP preprocess transform.
+        image_folder (str): Photos path.
+        model: CLIP model.
+        preprocess: CLIP transform.
         device: 'cpu', 'cuda', or 'mps'.
-        progress_callback (function, optional): A function that takes (current, total, message) 
-                                                to update UI progress bars.
+        progress_callback: UI updater function.
     """
     if not image_folder or not os.path.isdir(image_folder):
         print("Error: Invalid image folder.")
@@ -99,7 +97,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
 
     print(f"Indexing photos in: {image_folder}")
     
-    # Initialize OCR DB
+    # Init OCR
     ocr_conn = init_ocr_db()
     ocr_cursor = ocr_conn.cursor()
     ocr_cursor.execute("DELETE FROM ocr_data") 
@@ -116,7 +114,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
     filenames_map = OrderedDict() 
     embeddings_list = []
 
-    # --- AUTO-TAGGING SETUP ---
+    # --- Auto-Tagging ---
     categories = ["animal", "bird", "city", "building", "landscape", "food", "people", 
                   "car", "beach", "mountain", "sunset", "party", "night", "flower", 
                   "water", "snow", "forest", "indoor", "outdoor", "sky", "sea", "street",
@@ -135,7 +133,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
     THUMBNAIL_FOLDER = ".cache/thumbnails"
     os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
-    # Use tqdm for CLI progress bar
+    # CLI Progress
     pbar = tqdm(total=total_images, unit="img")
     
     processed_count = 0
@@ -153,10 +151,10 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
                 # Open image
                 img = Image.open(path).convert("RGB")
                 
-                # --- OPTIMIZATION: Resize ONCE ---
+                # Resize optimization
                 img.thumbnail((1024, 1024)) 
                 
-                # --- THUMBNAIL GENERATION ---
+                # Generate thumbnail
                 thumb_path = os.path.join(THUMBNAIL_FOLDER, filename)
                 thumb = img.copy()
                 thumb.thumbnail((250, 250))
@@ -165,7 +163,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
                 image_batch.append(preprocess(img))
                 valid_filenames_in_batch.append(filename)
 
-                # --- OCR EXTRACTION ---
+                # Extract text
                 extracted_text = extract_text_from_image(img)
                 if extracted_text:
                     ocr_cursor.execute("INSERT INTO ocr_data (filename, text_content) VALUES (?, ?)", (filename, extracted_text))
@@ -176,7 +174,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
             pbar.update(1)
             processed_count += 1
             
-            # Update UI if callback provided
+            # Update UI
             if progress_callback:
                 progress_callback(processed_count, total_images, f"Indexing {filename}...")
 
@@ -186,7 +184,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
                 batch_embeds = model.encode_image(image_tensor)
                 batch_embeds = batch_embeds / batch_embeds.norm(dim=-1, keepdim=True)
                 
-                # --- UPDATE CATEGORY COUNTS ---
+                # Update counts
                 similarity = (100.0 * batch_embeds @ text_features.T).softmax(dim=-1)
                 top_indices = similarity.argmax(dim=-1).cpu().numpy()
                 for idx in top_indices:
@@ -202,7 +200,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
         print("No valid images found.")
         return 0
 
-    # Save FAISS Index
+    # Save index
     embeddings_matrix = np.stack(embeddings_list).astype('float32')
     D = embeddings_matrix.shape[1] 
     index = faiss.IndexFlatL2(D)
@@ -212,7 +210,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
     with open(MAPPING_FILE, "wb") as f:
         pickle.dump(list(filenames_map.keys()), f)
 
-    # --- SAVE TOP KEYWORDS ---
+    # Save keywords
     top_indices = np.argsort(category_counts)[::-1][:12] 
     top_keywords = [categories[i] for i in top_indices if category_counts[i] > 0]
     
