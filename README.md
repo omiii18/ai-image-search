@@ -7,12 +7,14 @@
 ## 🚀 Key Features
 
 *   **Semantic Text Search**: Find photos by describing them (e.g., "a golden retriever running on a beach", "birthday party at night"). The AI "sees" the image content.
+*   **OCR Text Search**: Search for **text inside your images** (e.g., screenshots, documents, signs) using integrated Tesseract OCR.
 *   **Image-to-Image Search**: Use an existing image to find visually similar photos in your library.
 *   **100% Local & Private**: Runs entirely on your machine. No data is ever sent to the cloud. Optimized for macOS (Apple Silicon compatible).
-*   **High Performance**: Powered by **FAISS** (Facebook AI Similarity Search) for millisecond-speed queries even with large libraries.
+*   **High Performance**: Powered by **FAISS** for millisecond-speed queries and **ViT-B/32** for faster indexing.
+*   **Smart Caching**: Caches embeddings and thumbnails for instant startup and smooth scrolling.
 *   **Modern Desktop GUI**: A sleek dark-mode interface built with Tkinter, featuring responsive results and easy navigation.
 *   **Broad Format Support**: Supports standard formats (JPG, PNG, WEBP) and **HEIC** (Apple High Efficiency Image Container).
-*   **Auto-Indexing**: Automatically detects new images in your selected folder and updates the search index.
+*   **Auto-Indexing**: Automatically detects new images in your selected folder and updates the search index with a visual progress bar.
 
 ---
 
@@ -28,10 +30,13 @@ This project combines state-of-the-art Computer Vision and NLP models:
     *   The generated image embeddings are stored in a **FAISS** index.
     *   FAISS allows for extremely fast nearest-neighbor search, finding the vectors most similar to your query vector.
 
-3.  **Retrieval & Ranking**:
-    *   When you search, your query (text or image) is converted into a vector.
-    *   The app calculates the **Cosine Similarity** between your query and your library.
-    *   Results are ranked by match percentage and displayed instantenously.
+3.  **Text Extraction (OCR & FTS)**:
+    *   The app uses **Tesseract OCR** to extract text from your images.
+    *   This text is stored in a **SQLite** database with Full-Text Search (FTS5) enabled, allowing you to find document scans or screenshots by their written content alongside semantic meaning.
+
+4.  **Retrieval & Ranking**:
+    *   When you search, your query is processed both semantically (CLIP) and literally (OCR).
+    *   The app combines cosine similarity scores and keyword matches to rank results instantaneously.
 
 ---
 
@@ -41,31 +46,39 @@ This project combines state-of-the-art Computer Vision and NLP models:
 *   **Python 3.12** or higher.
 *   **git** (for cloning).
 
-### 1. Clone the Repository
+### 1.1 Install System Dependencies (Tesseract OCR)
+This project requires Tesseract for OCR text extraction.
+
+**macOS (Homebrew):**
+```bash
+brew install tesseract
+```
+**Windows:**
+Download and install from [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract/wiki).
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt-get install tesseract-ocr
+```
+
+### 2. Clone the Repository
 ```bash
 git clone https://github.com/omiii18/ai-image-search.git
 cd ai-image-search
 ```
 
-### 2. Create a Virtual Environment
-It is highly recommended to use a virtual environment to manage dependencies.
+### 3. Create a Virtual Environment
+It is highly recommended to use a virtual environment.
 
 ```bash
-# Create virtual environment
 python3 -m venv .venv
-
-# Activate it (macOS/Linux)
-source .venv/bin/activate
-
-# Activate it (Windows)
-# .venv\Scripts\activate
+source .venv/bin/activate  # macOS/Linux
+# .venv\Scripts\activate   # Windows
 ```
 
-### 3. Install Dependencies
-Install the required libraries including PyTorch, FAISS, and CLIP.
-
+### 4. Install Dependencies
 ```bash
-pip install torch torchvision torchaudio faiss-cpu numpy Pillow pillow-heif git+https://github.com/openai/CLIP.git
+pip install torch torchvision torchaudio faiss-cpu numpy Pillow pillow-heif pytesseract tqdm git+https://github.com/openai/CLIP.git
 ```
 
 *(Note: `pillow-heif` is required for HEIC support)*
@@ -86,35 +99,35 @@ python3 image_search_app.py
 export KMP_DUPLICATE_LIB_OK=TRUE
 ```
 
-### 2. Configure Your Library
-1.  Click the **"Select Folder"** button in the top header.
-2.  Choose the local directory containing your photos.
-3.  The app will automatically start **indexing** your photos. This might take a few moments depending on the size of your library.
+### 3. Configure Your Library
+The first time you run the app, stick to the GUI flow:
+1.  Click **"Select Folder"** and choose your photo directory.
+2.  The app will automatically create a `settings.json` file.
+3.  Indexing will start with a progress bar.
 
-### 3. Search
-*   **Text Search**: Type a description (e.g., "sunset over mountains") and press Enter or click Search.
-*   **Image Search**: Click **"Browse Image"** to select a reference photo and find similar matches.
-*   **Suggestions**: Use the suggested tags for quick discovery.
+*(Advanced)*: You can rename `settings.example.json` to `settings.json` and edit it manually if preferred.
 
 ---
 
 ## 🗄️ Project Structure
 
-*   `image_search_app.py`: The main entry point. Handles the GUI (Tkinter), application logic, and search workflow.
-*   `index.py`: Contains the logic for processing images and building the FAISS index.
-*   `embeddings/`: Directory where the vector index (`faiss.index`) and metadata (`mapping.pkl`) are stored.
-*   `requirements.txt`: List of python dependencies.
-*   `settings.json`: Stores user preferences (e.g., last selected folder).
+*   `image_search_app.py`: GUI application entry point.
+*   `index.py`: Core logic for CLIP embedding generation and FAISS indexing.
+*   `embeddings/`: Stores the vector index (`faiss.index`), file mapping (`mapping.pkl`), and OCR data (`ocr.db`).
+*   `.cache/`: Stores generated thumbnails for fast loading.
+*   `settings.json`: User configuration (gitignored).
+*   `settings.example.json`: Template for configuration.
 
 ---
 
 ## 💻 Tech Stack
 
 *   **Core Logic**: Python 3.12
-*   **AI Model**: OpenAI CLIP (ViT-L/14)
+*   **AI Model**: OpenAI CLIP (ViT-B/32)
 *   **Vector Database**: FAISS (CPU)
-*   **GUI Framework**: Tkinter
-*   **Image Processing**: Pillow (PIL)
+*   **OCR Engine**: Tesseract + SQLite FTS5
+*   **GUI**: Tkinter (Custom Dark Theme)
+*   **Image Processing**: Pillow (PIL) + pillow-heif
 
 ---
 
