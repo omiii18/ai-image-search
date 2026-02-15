@@ -40,7 +40,20 @@ This project combines state-of-the-art Computer Vision and NLP models:
 
 ---
 
-## 📦 Installation & Setup
+## 📥 Download & Quick Start (macOS)
+
+If you just want to use the app without setting up Python:
+1.  Go to the [Latest Release](https://github.com/omiii18/ai-image-search/releases).
+2.  Download the `DeepSearchAI_macOS.zip` file.
+3.  Unzip the file and move `DeepSearchAI.app` to your `Applications` folder.
+4.  **Right-click** the app and select **"Open"** (needed for the first time as it's not signed).
+
+> [!NOTE]
+> You still need to have [Tesseract OCR](https://tesseract-ocr.github.io/tessdoc/Installation.html) installed on your system for text search to work.
+
+---
+
+## 📦 Development Setup
 
 ### Prerequisites
 *   **Python 3.12** or higher.
