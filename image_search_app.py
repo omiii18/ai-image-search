@@ -58,31 +58,47 @@ except ImportError:
     # Fallback if indexing fails
     def build_index(*args): return 0
 
-class ModernButton(tk.Label):
-    """Custom consistent button styling."""
-    def __init__(self, parent, text, command, bg="#5865F2", fg="white", hover_bg="#4752C4", font=("Inter", 10, "bold"), padx=15, pady=8, min_width=0):
+class ModernButton(tk.Canvas):
+    """Premium pill-shaped button."""
+    def __init__(self, parent, text, command, bg="#5865F2", fg="white", hover_bg="#4752C4", font=("Inter", 10, "bold"), width=100, height=35, radius=15):
+        super().__init__(parent, width=width, height=height, bg=parent["bg"], highlightthickness=0, cursor="hand2")
         self.bg_color = bg
         self.hover_bg = hover_bg
+        self.fg = fg
         self.command = command
-        self.min_width = min_width
+        self.radius = radius
+        self.text = text
+        self.font = font
+        self.width = width
+        self.height = height
         
-        super().__init__(parent, text=text, bg=bg, fg=fg, font=font, padx=padx, pady=pady, cursor="hand2")
-        
-        # Bind events
+        self.rect = self._draw_rounded_rect(0, 0, width, height, radius, bg)
+        self.label = self.create_text(width/2, height/2, text=text, fill=fg, font=font)
         
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
         self.bind("<Button-1>", self.on_click)
 
+    def _draw_rounded_rect(self, x1, y1, x2, y2, r, color):
+        points = [x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1, x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2, x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2, x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1]
+        return self.create_polygon(points, fill=color, smooth=True)
+
     def on_enter(self, e):
-        self.config(bg=self.hover_bg)
+        self.itemconfig(self.rect, fill=self.hover_bg)
 
     def on_leave(self, e):
-        self.config(bg=self.bg_color)
+        self.itemconfig(self.rect, fill=self.bg_color)
 
     def on_click(self, e):
         if self.command:
             self.command()
+
+def get_rounded_mask(size, radius):
+    """Create a rounded mask for images."""
+    mask = Image.new('L', size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle((0, 0) + size, radius, fill=255)
+    return mask
 
 class ImageSearchApp:
     def __init__(self, root):
@@ -243,17 +259,18 @@ class ImageSearchApp:
     # --- UI ---
     
     def _build_ui(self):
-        # Modern Dark Theme Aesthetics
+        # Premium Dark Theme Aesthetics
         self.colors = {
-            "bg": "#121212",
-            "header": "#1E1E1E",
-            "card": "#252525",
-            "accent": "#6C5CE7",
-            "text": "#E1E1E6",
+            "bg": "#0F0F0F",         # Deeper black
+            "header": "#0F0F0F",     # Seamless header
+            "card": "#1E1E1E",       # Darker cards
+            "accent": "#6C5CE7",     # Soft purple accent
+            "text": "#FFFFFF",
             "subtext": "#A1A1AA",
-            "danger": "#FF5252",
-            "success": "#00E676",
-            "input_bg": "#2C2C2C"
+            "danger": "#FF4757",
+            "success": "#26DE81",    # Vibrant green for badges
+            "input_bg": "#1E1E1E",   # Matching cards
+            "border": "#2D2D2D"
         }
         
         self.root.config(bg=self.colors["bg"])
@@ -269,62 +286,67 @@ class ImageSearchApp:
         self._build_search_area(main_container)
 
         # 3. Status Bar
-        status_frame = tk.Frame(main_container, bg=self.colors["bg"], padx=20, pady=5)
+        status_frame = tk.Frame(main_container, bg=self.colors["bg"], padx=40, pady=5)
         status_frame.pack(fill="x")
-        tk.Label(status_frame, textvariable=self.status_text, bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 10)).pack(anchor="w")
+        tk.Label(status_frame, textvariable=self.status_text, bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 9)).pack(anchor="w")
 
         # 4. Results Area (Scrollable)
         self._build_results_area(main_container)
 
 
     def _build_header(self, parent):
-        header_frame = tk.Frame(parent, bg=self.colors["header"], pady=15, padx=20)
+        header_frame = tk.Frame(parent, bg=self.colors["header"], pady=20, padx=40)
         header_frame.pack(side="top", fill="x")
         
         # Title
-        title_label = tk.Label(header_frame, text="DeepSearch AI", bg=self.colors["header"], fg=self.colors["text"], font=("Outfit", 18, "bold"))
+        title_label = tk.Label(header_frame, text="DeepSearch AI", bg=self.colors["header"], fg=self.colors["text"], font=("Outfit", 22, "bold"))
         title_label.pack(side="left")
         
         # Settings Group
         settings_frame = tk.Frame(header_frame, bg=self.colors["header"])
         settings_frame.pack(side="right")
         
-        # Current Folder Display
-        self.dir_label = tk.Label(settings_frame, text=self._get_display_path(), 
-                                  bg=self.colors["header"], fg=self.colors["subtext"], font=("Inter", 9), anchor="e")
-        self.dir_label.pack(side="left", padx=(0, 15))
-
-        # Buttons
-        ModernButton(settings_frame, "Change Folder", self._select_folder, bg="#2D3436", hover_bg="#636e72", font=("Inter", 9)).pack(side="left", padx=5)
-        ModernButton(settings_frame, "Re-Index", self.reindex_thread, bg=self.colors["accent"], hover_bg="#584ab8", font=("Inter", 9, "bold")).pack(side="left", padx=5)
-        ModernButton(settings_frame, "Clean", self._clear_cache, bg=self.colors["danger"], hover_bg="#d32f2f", font=("Inter", 9)).pack(side="left", padx=5)
+        # Buttons (Narrower and cleaner)
+        ModernButton(settings_frame, "Change Folder", self._select_folder, bg="#2D2D2D", hover_bg="#3D3D3D", width=110, height=32, font=("Inter", 9)).pack(side="left", padx=5)
+        ModernButton(settings_frame, "Re-Index", self.reindex_thread, bg=self.colors["accent"], hover_bg="#584ab8", width=90, height=32, font=("Inter", 9)).pack(side="left", padx=5)
+        ModernButton(settings_frame, "Clean", self._clear_cache, bg="#B33939", hover_bg="#8B2C2C", width=80, height=32, font=("Inter", 9)).pack(side="left", padx=5)
 
 
     def _build_search_area(self, parent):
-        search_frame = tk.Frame(parent, bg=self.colors["bg"], pady=20, padx=20)
+        search_frame = tk.Frame(parent, bg=self.colors["bg"], pady=10, padx=40)
         search_frame.pack(fill="x")
         
-        # Search Box Container
-        input_container = tk.Frame(search_frame, bg=self.colors["input_bg"], padx=10, pady=5)
-        input_container.pack(fill="x", expand=True)
+        # Premium Search Bar Canvas (for rounded corners)
+        self.search_canvas = tk.Canvas(search_frame, height=60, bg=self.colors["bg"], highlightthickness=0)
+        self.search_canvas.pack(fill="x", expand=True)
+        
+        # Draw search bar background
+        self.root.update_idletasks() # Ensure width is calculated
+        width = self.root.winfo_width() - 80
+        self.search_bg = self._draw_canvas_rounded_rect(self.search_canvas, 0, 0, width, 55, 12, self.colors["input_bg"])
+        
+        # Search Icon
+        self.search_canvas.create_text(30, 28, text="🔍", fill=self.colors["subtext"], font=("Inter", 16))
 
-        # Icon/Label
-        tk.Label(input_container, text="🔍", bg=self.colors["input_bg"], fg=self.colors["subtext"], font=("Inter", 14)).pack(side="left", padx=5)
-
-        # Text Input
-        self.search_entry = tk.Entry(input_container, textvariable=self.search_text_var, 
-                                     font=("Inter", 14), bd=0, relief=tk.FLAT, 
+        # Entry Widget embedded in Canvas
+        self.search_entry = tk.Entry(search_frame, textvariable=self.search_text_var, 
+                                     font=("Inter", 15), bd=0, relief=tk.FLAT, 
                                      bg=self.colors["input_bg"], fg=self.colors["text"], 
                                      insertbackground=self.colors["text"])
-        self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
-        # self.search_entry.bind("<Return>", lambda e: self.search_thread())
+        
+        # Place entry on canvas
+        self.entry_window = self.search_canvas.create_window(60, 28, window=self.search_entry, anchor="w", width=width-220)
         self.search_entry.bind("<KeyRelease>", self._show_suggestions) 
 
-        # Browse Image Button
-        ModernButton(input_container, "📷 Image", self._select_image_query, bg=self.colors["input_bg"], hover_bg="#3D3D3D", fg=self.colors["accent"]).pack(side="right")
+        # Browse Image Icon
+        self.image_icon_item = self.search_canvas.create_text(width-110, 28, text="📷 Image", fill=self.colors["subtext"], font=("Inter", 10), anchor="e")
         
-        # Submit Button
-        ModernButton(input_container, "Search", self.search_thread, bg=self.colors["accent"], hover_bg="#584ab8").pack(side="right", padx=10)
+        # Search Button (Inside the bar)
+        self.search_btn = ModernButton(self.search_canvas, "Search", self.search_thread, bg=self.colors["accent"], hover_bg="#584ab8", width=80, height=35, radius=10)
+        self.search_btn_item = self.search_canvas.create_window(width-10, 28, window=self.search_btn, anchor="e")
+        
+        # Bind resize
+        search_frame.bind("<Configure>", self._on_search_resize)
 
         # Suggestion Tags
         self.suggestion_buttons_frame = tk.Frame(search_frame, bg=self.colors["bg"], pady=10)
@@ -336,6 +358,21 @@ class ImageSearchApp:
                                           font=("Inter", 12), relief=tk.FLAT, bd=0,
                                           background="#333333", fg=self.colors["text"], highlightthickness=0)
         self.suggestions_listbox.place_forget()
+
+    def _on_search_resize(self, event):
+        """Redraw search bar on window resize."""
+        width = event.width - 40
+        if width < 100: return
+        
+        self.search_canvas.delete(self.search_bg)
+        self.search_bg = self._draw_canvas_rounded_rect(self.search_canvas, 0, 0, width, 55, 12, self.colors["input_bg"])
+        self.search_canvas.tag_lower(self.search_bg)
+        
+        # Re-position elements
+        self.search_canvas.coords(self.image_icon_item, width-110, 28)
+        self.search_canvas.coords(self.search_btn_item, width-10, 28)
+        self.search_canvas.coords(self.entry_window, 60, 28)
+        self.search_canvas.itemconfig(self.entry_window, width=max(10, width-220))
 
     def _build_results_area(self, parent):
         # Scrolling Canvas
@@ -387,16 +424,21 @@ class ImageSearchApp:
         self.results_canvas.itemconfig(self.canvas_window, width=canvas_width)
 
     def _refresh_suggestions(self):
-        """Refresh suggestion buttons."""
+        """Refresh suggestion buttons as pills."""
         for widget in self.suggestion_buttons_frame.winfo_children():
             widget.destroy()
             
-        tk.Label(self.suggestion_buttons_frame, text="Quick Tags:", bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 10, "bold")).pack(side="left", padx=(0, 10))
+        tk.Label(self.suggestion_buttons_frame, text="Quick Tags:", bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 10, "bold")).pack(side="left", padx=(0, 15))
         
-        for keyword in self.SUGGESTION_KEYWORDS[:8]: # Show top 8 keywords
+        for keyword in self.SUGGESTION_KEYWORDS[:10]: # Show top 10
+            # Small pill buttons
             btn = ModernButton(self.suggestion_buttons_frame, text=keyword, command=lambda k=keyword: self._quick_search(k), 
-                            bg="#2D2D2D", fg=self.colors["text"], hover_bg="#3D3D3D", padx=10, pady=4, font=("Inter", 9))
-            btn.pack(side="left", padx=4)
+                             bg="#1E1E1E", fg=self.colors["subtext"], hover_bg="#2D2D2D", width=len(keyword)*9+20, height=28, radius=14, font=("Inter", 9))
+            btn.pack(side="left", padx=5)
+
+    def _draw_canvas_rounded_rect(self, canvas, x1, y1, x2, y2, r, color):
+        points = [x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1, x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2, x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2, x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1]
+        return canvas.create_polygon(points, fill=color, smooth=True)
 
     def _get_display_path(self):
         if not self.image_folder_path: return "No Folder Selected"
@@ -406,7 +448,6 @@ class ImageSearchApp:
         folder_selected = filedialog.askdirectory(title="Select Photo Library")
         if folder_selected:
             self.image_folder_path = folder_selected
-            self.dir_label.config(text=self._get_display_path())
             self._save_settings()
             self.reindex_thread()
             
@@ -552,40 +593,46 @@ class ImageSearchApp:
         self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
 
     def _render_card(self, path, title, subtitle, row, col, highlight=False):
-        """Create result card."""
-        bg_color = self.colors["card"] if not highlight else "#3D2C4D"
+        """Create premium result card with rounded images and badges."""
+        card_bg = self.colors["bg"]
         
-        card = tk.Frame(self.results_frame, bg=bg_color, padx=10, pady=10)
-        card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+        # Main card container (invisible frame for grid)
+        container = tk.Frame(self.results_frame, bg=card_bg, padx=12, pady=15)
+        container.grid(row=row, column=col, sticky="nsew")
 
-        # Load Image
+        # Inner Canvas for the image and labels (to handle rounded corners and badges)
+        canvas = tk.Canvas(container, width=240, height=190, bg=card_bg, highlightthickness=0)
+        canvas.pack()
+
+        # Load and mask image
         try:
-            THUMBNAIL_FOLDER = ".cache/thumbnails"
-            os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
-            thumb_path = os.path.join(THUMBNAIL_FOLDER, os.path.basename(path))
-
-            img = None
-            if os.path.exists(thumb_path):
-                try: img = Image.open(thumb_path)
-                except: pass
+            img = Image.open(path)
+            img = ImageOps.fit(img, (240, 160), Image.Resampling.LANCZOS)
             
-            if not img:
-                img = Image.open(path)
-                # Aspect Ratio Cover
-                img = ImageOps.fit(img, (220, 160), Image.Resampling.LANCZOS) 
-
-            # Create rounded mask
+            # Apply rounded corners
+            mask = get_rounded_mask((240, 160), 15)
+            img.putalpha(mask)
+            
             photo = ImageTk.PhotoImage(img)
-            
-            lbl_img = tk.Label(card, image=photo, bg=bg_color)
-            lbl_img.image = photo # Retain reference
-            lbl_img.pack()
-            
-            tk.Label(card, text=title[:20], bg=bg_color, fg=self.colors["text"], font=("Inter", 9, "bold")).pack(pady=(5,0))
-            tk.Label(card, text=subtitle, bg=bg_color, fg=self.colors["accent"] if not highlight else "#fff", font=("Inter", 9)).pack()
+            canvas.create_image(0, 0, image=photo, anchor="nw")
+            canvas.image = photo # Reference
+
+            # Draw background for filename/badge area (subtle)
+            # canvas.create_rectangle(0, 165, 240, 190, fill=card_bg, outline="")
+
+            # Filename Label
+            clean_title = title.split(".")[0][:18]
+            canvas.create_text(2, 175, text=clean_title, fill=self.colors["subtext"], font=("Inter", 10), anchor="w")
+
+            # Match Badge (Green pill)
+            if "% Match" in subtitle:
+                percent = subtitle.split("%")[0]
+                # Draw green badge
+                self._draw_canvas_rounded_rect(canvas, 185, 168, 238, 186, 6, self.colors["success"])
+                canvas.create_text(211, 177, text=f"{percent}%", fill="#000", font=("Inter", 9, "bold"))
             
         except Exception as e:
-            tk.Label(card, text="Error", bg=bg_color, fg="red").pack()
+            canvas.create_text(120, 80, text="Image Load Error", fill="red")
 
     def _on_closing(self):
         """Exit cleanup."""
