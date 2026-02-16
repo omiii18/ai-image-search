@@ -1,7 +1,8 @@
+import os
+os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 import pickle
 import torch
 import clip
-import os
 import faiss
 import numpy as np
 import tkinter as tk
@@ -38,8 +39,6 @@ if getattr(sys, 'frozen', False):
 
 # Register HEIC opener
 pillow_heif.register_heif_opener()
-# --- Environment Fix ---
-os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 
 # --- Configuration ---
 DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
