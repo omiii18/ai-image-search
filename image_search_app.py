@@ -8,6 +8,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import messagebox, filedialog
 from PIL import Image, ImageTk, ImageDraw, ImageOps
+import customtkinter as ctk
 import json
 import threading
 import time
@@ -88,12 +89,13 @@ class ImageSearchApp:
     def __init__(self, root):
         self.root = root
         self.root.title("DeepSearch AI Photo Library")
-        self.root.geometry("1100x800")
+        self.root.geometry("1250x700")
         self.root.eval('tk::PlaceWindow . center') # Center window
 
         # --- State ---
         self.settings = self._load_settings()
-        self.image_folder_path = self.settings.get("image_folder_path", "")
+        self.image_folder_path = ""
+
         
         # --- AI ---
         self.model = None
@@ -114,6 +116,8 @@ class ImageSearchApp:
         # Build the main GUI layout
         self._build_ui()
         
+        self.create_dashboard_view()
+        
         # Non-blocking AI init
         threading.Thread(target=self._initialize_ai, daemon=True).start()
 
@@ -133,7 +137,7 @@ class ImageSearchApp:
             with open(SETTINGS_FILE, 'r') as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
-            return {"image_folder_path": ""}
+            return {"image_folder_path": "", "recent_folders": []}
             
     def _save_settings(self):
         """Save settings."""
@@ -143,6 +147,17 @@ class ImageSearchApp:
                 json.dump(self.settings, f, indent=4)
         except Exception as e:
             print(f"Error saving settings: {e}")
+
+    def get_recent_folders(self):
+        return self.settings.get("recent_folders", [])
+
+    def save_recent_folder(self, new_path):
+        recent = self.get_recent_folders()
+        if new_path in recent:
+            recent.remove(new_path)
+        recent.insert(0, new_path)
+        self.settings["recent_folders"] = recent[:6]
+        self._save_settings()
 
     def _initialize_ai(self):
         """Load AI model."""
@@ -240,7 +255,98 @@ class ImageSearchApp:
             self.faiss_index = None
             self.filenames = []
 
-    # --- UI ---
+    # --- Dashboard UI ---
+
+    def create_dashboard_view(self):
+        # Hide main interface
+        if hasattr(self, 'main_container'):
+            self.main_container.pack_forget()
+
+        self.dashboard_frame = ctk.CTkFrame(self.root, fg_color=self.colors["bg"])
+        self.dashboard_frame.pack(fill="both", expand=True)
+
+        # Header
+        header_label = ctk.CTkLabel(self.dashboard_frame, text="Welcome to DeepSearch AI", font=("Outfit", 28, "bold"), text_color=self.colors["text"])
+        header_label.pack(pady=(60, 10))
+
+        subtitle_label = ctk.CTkLabel(self.dashboard_frame, text="Select a recent folder or open a new one to start searching.", font=("Inter", 14), text_color=self.colors["subtext"])
+        subtitle_label.pack(pady=(0, 40))
+
+        # Grid Container
+        grid_frame = ctk.CTkFrame(self.dashboard_frame, fg_color="transparent")
+        grid_frame.pack(padx=40, pady=20)
+
+        recent_folders = self.get_recent_folders()
+
+        for index, folder_path in enumerate(recent_folders):
+            row = index // 3
+            col = index % 3
+
+            folder_name = os.path.basename(os.path.normpath(folder_path))
+            
+            # Truncate path if too long
+            display_path = folder_path if len(folder_path) < 35 else "..." + folder_path[-32:]
+            display_text = f"{folder_name}\n\n{display_path}"
+
+            btn = ctk.CTkButton(
+                grid_frame, 
+                text=display_text, 
+                height=100,
+                width=260,
+                corner_radius=10, 
+                fg_color="#333333", 
+                hover_color="#444444",
+                font=("Inter", 14, "bold"),
+                command=lambda p=folder_path: self.load_selected_folder(p)
+            )
+            btn.grid(row=row, column=col, padx=15, pady=15, sticky="nsew")
+
+        # "Browse for New Folder..." tile
+        new_row = len(recent_folders) // 3
+        new_col = len(recent_folders) % 3
+
+        browse_btn = ctk.CTkButton(
+            grid_frame, 
+            text="➕ Browse for New Folder...", 
+            height=100,
+            width=260,
+            corner_radius=10, 
+            fg_color=self.colors["accent"], 
+            hover_color="#584ab8",
+            font=("Inter", 14, "bold"),
+            command=self._select_folder_from_dashboard
+        )
+        browse_btn.grid(row=new_row, column=new_col, padx=15, pady=15, sticky="nsew")
+
+    def _select_folder_from_dashboard(self):
+        folder_selected = filedialog.askdirectory(title="Select Photo Library")
+        if folder_selected:
+            self.load_selected_folder(folder_selected)
+
+    def load_selected_folder(self, folder_path):
+        if not os.path.exists(folder_path) or not os.path.isdir(folder_path):
+            messagebox.showerror("Error", "Folder no longer exists.")
+            # Remove from recent folders and refresh
+            recent = self.get_recent_folders()
+            if folder_path in recent:
+                recent.remove(folder_path)
+                self.settings["recent_folders"] = recent
+                self._save_settings()
+                self.dashboard_frame.destroy()
+                self.create_dashboard_view()
+            return
+            
+        self.save_recent_folder(folder_path)
+        self.image_folder_path = folder_path
+        self.dir_label.config(text=self._get_display_path())
+        self._save_settings()
+
+        self.dashboard_frame.pack_forget()
+        self.main_container.pack(fill="both", expand=True)
+
+        self.reindex_thread()
+
+    # --- Main UI ---
     
     def _build_ui(self):
         # Modern Dark Theme Aesthetics
@@ -259,22 +365,22 @@ class ImageSearchApp:
         self.root.config(bg=self.colors["bg"])
         
         # Main Layout Container
-        main_container = tk.Frame(self.root, bg=self.colors["bg"])
-        main_container.pack(fill="both", expand=True)
+        self.main_container = tk.Frame(self.root, bg=self.colors["bg"])
+        self.main_container.pack(fill="both", expand=True)
 
         # 1. Header Section
-        self._build_header(main_container)
+        self._build_header(self.main_container)
         
         # 2. Search & Filter Section
-        self._build_search_area(main_container)
+        self._build_search_area(self.main_container)
 
         # 3. Status Bar
-        status_frame = tk.Frame(main_container, bg=self.colors["bg"], padx=20, pady=5)
+        status_frame = tk.Frame(self.main_container, bg=self.colors["bg"], padx=20, pady=5)
         status_frame.pack(fill="x")
         tk.Label(status_frame, textvariable=self.status_text, bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 10)).pack(anchor="w")
 
         # 4. Results Area (Scrollable)
-        self._build_results_area(main_container)
+        self._build_results_area(self.main_container)
 
 
     def _build_header(self, parent):
@@ -406,6 +512,7 @@ class ImageSearchApp:
         folder_selected = filedialog.askdirectory(title="Select Photo Library")
         if folder_selected:
             self.image_folder_path = folder_selected
+            self.save_recent_folder(folder_selected)
             self.dir_label.config(text=self._get_display_path())
             self._save_settings()
             self.reindex_thread()
