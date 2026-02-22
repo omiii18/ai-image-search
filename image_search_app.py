@@ -45,19 +45,15 @@ pillow_heif.register_heif_opener()
 DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_NAME = "ViT-B/32"  # Speed optimized
 K_MATCHES = 12 # Number of results to display
-EMBED_FOLDER = "embeddings"
-INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
-MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
-KEYWORDS_FILE = resource_path("keywords.json")
-OCR_DB_FILE = os.path.join(EMBED_FOLDER, "ocr.db")
 SETTINGS_FILE = "settings.json"
 
 # Import index builder
 try:
-    from index import build_index 
+    from index import build_index, get_catalog_paths
 except ImportError:
     # Fallback if indexing fails
     def build_index(*args): return 0
+    def get_catalog_paths(path): return path, path, path, path, path
 
 class ModernButton(tk.Label):
     """Custom consistent button styling."""
@@ -123,10 +119,12 @@ class ImageSearchApp:
 
     def _load_keywords(self):
         """Load keywords from file."""
-        if os.path.exists(KEYWORDS_FILE):
+        if self.image_folder_path:
             try:
-                with open(KEYWORDS_FILE, 'r') as f:
-                    return json.load(f)
+                _, _, _, keywords_file, _ = get_catalog_paths(self.image_folder_path)
+                if os.path.exists(keywords_file):
+                    with open(keywords_file, 'r') as f:
+                        return json.load(f)
             except:
                 pass
         return self.DEFAULT_KEYWORDS
@@ -197,7 +195,8 @@ class ImageSearchApp:
         # 2. Load existing info
         indexed_count = 0
         try:
-            temp_index = faiss.read_index(INDEX_FILE)
+            _, index_file, _, _, _ = get_catalog_paths(self.image_folder_path)
+            temp_index = faiss.read_index(index_file)
             indexed_count = temp_index.ntotal
         except Exception:
             pass 
@@ -234,7 +233,8 @@ class ImageSearchApp:
     def _load_search_index(self):
         """Load FAISS index."""
         try:
-            self.faiss_index = faiss.read_index(INDEX_FILE)
+            _, index_file, mapping_file, _, _ = get_catalog_paths(self.image_folder_path)
+            self.faiss_index = faiss.read_index(index_file)
             
             # --- Dimension Check ---
             # ViT-B/32 has 512, ViT-L/14 has 768.
@@ -248,7 +248,7 @@ class ImageSearchApp:
                 self.status_text.set("Model Changed. Please CLICK 'Re-Index' to update.")
                 return
 
-            with open(MAPPING_FILE, "rb") as f:
+            with open(mapping_file, "rb") as f:
                 self.filenames = pickle.load(f)
         except Exception as e:
             print(f"Error loading index: {e}")
@@ -518,15 +518,16 @@ class ImageSearchApp:
             self.reindex_thread()
             
     def _clear_cache(self, silent=False):
-        if not silent and not messagebox.askyesno("Clear Cache", "Delete all index data? You will need to re-index."):
+        if not silent and not messagebox.askyesno("Clear Cache", "Delete all index data for this folder? You will need to re-index."):
             return
         try:
-            if os.path.exists(EMBED_FOLDER): shutil.rmtree(EMBED_FOLDER)
-            if os.path.exists(".cache"): shutil.rmtree(".cache")
+            if self.image_folder_path:
+                catalog_dir, _, _, _, _ = get_catalog_paths(self.image_folder_path)
+                if os.path.exists(catalog_dir): shutil.rmtree(catalog_dir)
+            
             self.faiss_index = None
             self.filenames = []
             self.SUGGESTION_KEYWORDS = self.DEFAULT_KEYWORDS
-            os.makedirs(EMBED_FOLDER, exist_ok=True)
             self._refresh_suggestions()
             self._display_results([])
             if not silent: self.status_text.set("Cache cleared.")
@@ -610,13 +611,15 @@ class ImageSearchApp:
 
         # --- OCR Search ---
         ocr_matches = {}
-        if text_query and os.path.exists(OCR_DB_FILE):
+        if text_query and self.image_folder_path:
              try:
-                conn = sqlite3.connect(OCR_DB_FILE)
-                c = conn.cursor()
-                c.execute("SELECT filename FROM ocr_data WHERE text_content MATCH ?", (f"{text_query}",))
-                for row in c.fetchall(): ocr_matches[row[0]] = 100.0
-                conn.close()
+                _, _, _, _, ocr_db_file = get_catalog_paths(self.image_folder_path)
+                if os.path.exists(ocr_db_file):
+                    conn = sqlite3.connect(ocr_db_file)
+                    c = conn.cursor()
+                    c.execute("SELECT filename FROM ocr_data WHERE text_content MATCH ?", (f"{text_query}",))
+                    for row in c.fetchall(): ocr_matches[row[0]] = 100.0
+                    conn.close()
              except: pass
 
         # --- FAISS Search ---
@@ -667,7 +670,8 @@ class ImageSearchApp:
 
         # Load Image
         try:
-            THUMBNAIL_FOLDER = ".cache/thumbnails"
+            catalog_dir, _, _, _, _ = get_catalog_paths(self.image_folder_path)
+            THUMBNAIL_FOLDER = os.path.join(catalog_dir, "thumbnails")
             os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
             thumb_path = os.path.join(THUMBNAIL_FOLDER, os.path.basename(path))
 
@@ -712,7 +716,6 @@ class ImageSearchApp:
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    if not os.path.exists(EMBED_FOLDER): os.makedirs(EMBED_FOLDER)
     root = tk.Tk()
     app = ImageSearchApp(root)
     # Bind close event

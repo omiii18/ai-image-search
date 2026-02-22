@@ -1,4 +1,5 @@
 import os
+import ctypes
 os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 import torch
 import clip
@@ -28,12 +29,24 @@ except ImportError:
 # Optimized for speed
 MODEL_NAME = "ViT-B/32" 
 BATCH_SIZE = 32 # Safe batch size
-EMBED_FOLDER = "embeddings"
-INDEX_FILE = os.path.join(EMBED_FOLDER, "faiss.index")
-MAPPING_FILE = os.path.join(EMBED_FOLDER, "mapping.pkl")
-KEYWORDS_FILE = os.path.join(EMBED_FOLDER, "keywords.json")
-OCR_DB_FILE = os.path.join(EMBED_FOLDER, "ocr.db")
 SETTINGS_FILE = "settings.json"
+
+def get_catalog_paths(image_folder_path):
+    """Returns the paths for the localized .deepsearch catalog."""
+    catalog_dir = os.path.join(image_folder_path, ".deepsearch")
+    index_file = os.path.join(catalog_dir, "faiss.index")
+    mapping_file = os.path.join(catalog_dir, "mapping.pkl")
+    keywords_file = os.path.join(catalog_dir, "keywords.json")
+    ocr_db_file = os.path.join(catalog_dir, "ocr.db")
+    return catalog_dir, index_file, mapping_file, keywords_file, ocr_db_file
+
+def hide_folder_windows(folder_path):
+    """Hide the folder on Windows."""
+    if os.name == 'nt':
+        try:
+            ctypes.windll.kernel32.SetFileAttributesW(str(folder_path), 0x02)
+        except Exception:
+            pass
 
 if torch.backends.mps.is_available():
     DEVICE = "mps" 
@@ -44,8 +57,6 @@ else:
 
 print(f"Running on: {DEVICE} | Model: {MODEL_NAME}")
 
-os.makedirs(EMBED_FOLDER, exist_ok=True)
-
 def load_settings():
     try:
         with open(SETTINGS_FILE, 'r') as f:
@@ -53,9 +64,9 @@ def load_settings():
     except:
         return None
 
-def init_ocr_db():
+def init_ocr_db(ocr_db_file):
     """Init SQLite with FTS5."""
-    conn = sqlite3.connect(OCR_DB_FILE)
+    conn = sqlite3.connect(ocr_db_file)
     c = conn.cursor()
     c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS ocr_data USING fts5(filename, text_content)")
     conn.commit()
@@ -98,8 +109,12 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
 
     print(f"Indexing photos in: {image_folder}")
     
+    catalog_dir, index_file, mapping_file, keywords_file, ocr_db_file = get_catalog_paths(image_folder)
+    os.makedirs(catalog_dir, exist_ok=True)
+    hide_folder_windows(catalog_dir)
+    
     # Init OCR
-    ocr_conn = init_ocr_db()
+    ocr_conn = init_ocr_db(ocr_db_file)
     ocr_cursor = ocr_conn.cursor()
     ocr_cursor.execute("DELETE FROM ocr_data") 
     ocr_conn.commit()
@@ -131,7 +146,7 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
     print(f"Processing {total_images} images...")
 
     # Ensure thumbnail folder exists
-    THUMBNAIL_FOLDER = ".cache/thumbnails"
+    THUMBNAIL_FOLDER = os.path.join(catalog_dir, "thumbnails")
     os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
     # CLI Progress
@@ -206,16 +221,16 @@ def build_index(image_folder, model, preprocess, device, progress_callback=None)
     D = embeddings_matrix.shape[1] 
     index = faiss.IndexFlatL2(D)
     index.add(embeddings_matrix)
-    faiss.write_index(index, INDEX_FILE)
+    faiss.write_index(index, index_file)
 
-    with open(MAPPING_FILE, "wb") as f:
+    with open(mapping_file, "wb") as f:
         pickle.dump(list(filenames_map.keys()), f)
 
     # Save keywords
     top_indices = np.argsort(category_counts)[::-1][:12] 
     top_keywords = [categories[i] for i in top_indices if category_counts[i] > 0]
     
-    with open(KEYWORDS_FILE, "w") as f:
+    with open(keywords_file, "w") as f:
         json.dump(top_keywords, f)
 
     print(f"\nSUCCESS: Indexed {len(filenames_map)} images with {MODEL_NAME}.")
