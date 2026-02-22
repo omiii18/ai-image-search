@@ -7,14 +7,15 @@
 ## 🚀 Key Features
 
 *   **Semantic Text Search**: Find photos by describing them (e.g., "a golden retriever running on a beach", "birthday party at night"). The AI "sees" the image content.
-*   **OCR Text Search**: Search for **text inside your images** (e.g., screenshots, documents, signs) using integrated Tesseract OCR.
-*   **Image-to-Image Search**: Use an existing image to find visually similar photos in your library.
+*   **OCR Text Search**: Search for **text inside your images** (e.g., screenshots, documents, signs) using integrated Tesseract OCR and Full-Text Search.
+*   **Image-to-Image Search**: Drag and drop an existing image or click the "Image" button to find visually similar photos in your library.
+*   **Dynamic Contextual Tags**: Instead of static filters, the app performs a **Zero-Shot AI analysis** of your folder content to generate the most relevant "Quick Tags" automatically.
+*   **Drag-and-Drop Interaction**: Instantly search by dropping any image file directly into the application window or search bar.
+*   **Native OS Integration**: Click on any search result to **"Reveal in Finder/File Explorer"**, highlighting the exact file location on your system.
 *   **100% Local & Private**: Runs entirely on your machine. No data is ever sent to the cloud. Optimized for macOS (Apple Silicon compatible).
-*   **High Performance**: Powered by **FAISS** for millisecond-speed queries and **ViT-B/32** for faster indexing.
-*   **Smart Caching**: Caches embeddings and thumbnails for instant startup and smooth scrolling.
-*   **Modern Desktop GUI**: A sleek dark-mode interface built with Tkinter, featuring responsive results and easy navigation.
+*   **Modern Desktop GUI**: A sleek, premium light-themed interface built with **CustomTkinter**, featuring glassmorphism elements and responsive result grids.
 *   **Broad Format Support**: Supports standard formats (JPG, PNG, WEBP) and **HEIC** (Apple High Efficiency Image Container).
-*   **Auto-Indexing**: Automatically detects new images in your selected folder and updates the search index with a visual progress bar.
+*   **Auto-Indexing**: Automatically detects new images in your selected folder and updates the FAISS index with a real-time progress bar.
 
 ---
 
@@ -135,12 +136,13 @@ The first time you run the app, stick to the GUI flow:
 
 ## 💻 Tech Stack
 
-*   **Core Logic**: Python 3.12
+*   **Core Logic**: Python 3.12+
 *   **AI Model**: OpenAI CLIP (ViT-B/32)
-*   **Vector Database**: FAISS (CPU)
-*   **OCR Engine**: Tesseract + SQLite FTS5
-*   **GUI**: Tkinter (Custom Dark Theme)
-*   **Image Processing**: Pillow (PIL) + pillow-heif
+*   **Vector Database**: FAISS (Facebook AI Similarity Search)
+*   **OCR Engine**: Tesseract OCR + SQLite FTS5
+*   **GUI Framework**: CustomTkinter (Premium Light Theme)
+*   **Image Handling**: Pillow (PIL) + pillow-heif (HEIC)
+*   **Drag & Drop**: TkinterDnD2
 
 ---
 
