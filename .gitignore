@@ -21,3 +21,4 @@ settings.json
 # Logs and system files
 *.log
 .DS_Store
+*.zip

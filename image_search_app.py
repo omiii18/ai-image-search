@@ -469,6 +469,12 @@ class ImageSearchApp:
         # Configure columns for grid
         for i in range(4): self.scroll_frame.grid_columnconfigure(i, weight=1, pad=15)
 
+        # 4. Search Footer
+        self.footer_label = ctk.CTkLabel(self.display_container, 
+                                        text="DeepSearch AI v1.1 | Developed with ❤️ by Omkar Karne", 
+                                        font=("Inter", 10), text_color=self.colors["subtext"])
+        self.footer_label.pack(side="bottom", pady=(10, 0))
+
     def _build_header(self, parent):
         header_container = ctk.CTkFrame(parent, fg_color="transparent")
         header_container.pack(fill="x", padx=30, pady=(30, 0))
