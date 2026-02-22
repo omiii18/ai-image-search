@@ -85,14 +85,12 @@ class ModernButton(tk.Label):
 class ImageSearchApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("DeepSearch AI Photo Library")
-        self.root.geometry("1250x700")
-        self.root.eval('tk::PlaceWindow . center') # Center window
+        self.root.title("DeepSearch AI")
+        self.root.geometry("1100x700")
 
         # --- State ---
         self.settings = self._load_settings()
         self.image_folder_path = ""
-
         
         # --- AI ---
         self.model = None
@@ -100,23 +98,42 @@ class ImageSearchApp:
         self.faiss_index = None
         self.filenames = []
         
-        # --- GUI ---
+        # --- GUI State ---
         self.status_text = tk.StringVar(value="Initializing...")
         self.query_image_path = tk.StringVar(value="")
         self.search_text_var = tk.StringVar()
         
+        # Link status_text to the UI label
+        self.status_text.trace_add("write", lambda *args: self._sync_status_label())
+
         # --- Suggestions ---
-        self.DEFAULT_KEYWORDS = ["dance", "night drives", "parties", "trips", "week's memory", 
-                                     "beach", "food", "animal", "sunset", "mountain", "car", "person"]
+        self.DEFAULT_KEYWORDS = ["dance", "night drives", "parties", "trips", "beach", "food", "animal", "sunset"]
         self.SUGGESTION_KEYWORDS = self._load_keywords()
+
+        # Custom Theme Colors (Light Theme)
+        self.colors = {
+            "main_bg": "#F8F9FA",
+            "sidebar_bg": "#FFFFFF",
+            "accent": "#EF4444",      # Red
+            "active_bg": "#FEE2E2",   # Light Red
+            "text": "#1F2937",        # Dark Grey
+            "subtext": "#6B7280",     # Medium Grey
+            "border": "#E5E7EB",
+            "success": "#10B981"      # Green
+        }
+
+        ctk.set_appearance_mode("Light")
         
         # Build the main GUI layout
         self._build_ui()
         
-        self.create_dashboard_view()
-        
         # Non-blocking AI init
         threading.Thread(target=self._initialize_ai, daemon=True).start()
+
+    def _sync_status_label(self):
+        """Sync the trace from status_text to the CTkLabel."""
+        if hasattr(self, "status_label"):
+            self.status_label.configure(text=self.status_text.get())
 
     def _load_keywords(self):
         """Load keywords from file."""
@@ -177,8 +194,10 @@ class ImageSearchApp:
 
     def _update_progress(self, current, total, message):
         """Update UI progress."""
-        percent = int((current / total) * 100)
-        self.status_text.set(f"{message} ({percent}%)")
+        progress = current / total
+        self.progress_bar.set(progress)
+        percent = int(progress * 100)
+        self.status_label.configure(text=f"Indexing: {percent}%")
         self.root.update_idletasks() # Force UI refresh
 
     def _check_and_index_photos(self):
@@ -339,7 +358,6 @@ class ImageSearchApp:
             
         self.save_recent_folder(folder_path)
         self.image_folder_path = folder_path
-        self.dir_label.config(text=self._get_display_path())
         self._save_settings()
 
         self.dashboard_frame.pack_forget()
@@ -347,177 +365,164 @@ class ImageSearchApp:
 
         self.reindex_thread()
 
-    # --- Main UI ---
+    # --- Main UI Overhaul ---
     
     def _build_ui(self):
-        # Modern Dark Theme Aesthetics
-        self.colors = {
-            "bg": "#121212",
-            "header": "#1E1E1E",
-            "card": "#252525",
-            "accent": "#6C5CE7",
-            "text": "#E1E1E6",
-            "subtext": "#A1A1AA",
-            "danger": "#FF5252",
-            "success": "#00E676",
-            "input_bg": "#2C2C2C"
-        }
+        """Build the modernized two-column layout."""
+        self.root.configure(bg=self.colors["main_bg"])
         
-        self.root.config(bg=self.colors["bg"])
-        
-        # Main Layout Container
-        self.main_container = tk.Frame(self.root, bg=self.colors["bg"])
+        # 1. Main Layout: Sidebar and Content
+        self.main_container = ctk.CTkFrame(self.root, fg_color="transparent")
         self.main_container.pack(fill="both", expand=True)
 
-        # 1. Header Section
-        self._build_header(self.main_container)
+        # 1a. Left Sidebar
+        self.sidebar = ctk.CTkFrame(self.main_container, width=220, fg_color=self.colors["sidebar_bg"], corner_radius=0)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+
+        # Logo
+        logo_label = ctk.CTkLabel(self.sidebar, text="DeepSearch AI", font=("Outfit", 20, "bold"), text_color=self.colors["text"])
+        logo_label.pack(pady=(30, 40), padx=20, anchor="w")
+
+        # Menu Items
+        self.photos_btn = ctk.CTkButton(self.sidebar, text="  Photos", image=None, # Add icons later if needed
+                                        anchor="w", font=("Inter", 13, "bold"),
+                                        height=40, corner_radius=8,
+                                        fg_color=self.colors["active_bg"], text_color=self.colors["accent"],
+                                        hover_color=self.colors["active_bg"])
+        self.photos_btn.pack(fill="x", padx=15, pady=5)
+
+        recent_folders = self.get_recent_folders()
+        dropdown_vals = recent_folders if recent_folders else ["No recent folders"]
+        self.folders_dropdown = ctk.CTkOptionMenu(
+            self.sidebar, 
+            values=dropdown_vals,
+            command=self.load_selected_folder,
+            font=("Inter", 13),
+            dropdown_font=("Inter", 12),
+            height=40, corner_radius=8,
+            fg_color=self.colors["sidebar_bg"], text_color=self.colors["text"],
+            button_color=self.colors["sidebar_bg"], button_hover_color="#F3F4F6", dropdown_hover_color="#FEE2E2"
+        )
+        self.folders_dropdown.set("📁 Recent Folders")
+        self.folders_dropdown.pack(fill="x", padx=15, pady=5)
+
+        # Sidebar Bottom: Indexing Status
+        status_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        status_container.pack(side="bottom", fill="x", padx=20, pady=30)
+
+        status_header = ctk.CTkFrame(status_container, fg_color="transparent")
+        status_header.pack(fill="x")
+
+        ctk.CTkLabel(status_header, text="Indexing Status", font=("Inter", 11, "bold"), text_color=self.colors["text"]).pack(side="left")
+        self.live_marker = ctk.CTkLabel(status_header, text="Live", font=("Inter", 10, "bold"), text_color=self.colors["success"])
+        self.live_marker.pack(side="right")
+
+        self.status_label = ctk.CTkLabel(status_container, text="Ready", font=("Inter", 11), text_color=self.colors["subtext"])
+        self.status_label.pack(anchor="w", pady=(5, 10))
+
+        self.progress_bar = ctk.CTkProgressBar(status_container, height=6, progress_color=self.colors["accent"])
+        self.progress_bar.pack(fill="x")
+        self.progress_bar.set(1.0) # Default to full
+
+        # 1b. Right Content Area
+        self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.content_area.pack(side="right", fill="both", expand=True)
+
+        # 2. Top Header (Search & Actions)
+        self._build_header(self.content_area)
+
+        # 3. Main Display Area
+        self.display_container = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.display_container.pack(fill="both", expand=True, padx=30, pady=(10, 30))
+
+        # Title & Subtitle
+        self.results_title = ctk.CTkLabel(self.display_container, text="Recent Matches", font=("Outfit", 24, "bold"), text_color=self.colors["text"])
+        self.results_title.pack(anchor="w")
         
-        # 2. Search & Filter Section
-        self._build_search_area(self.main_container)
+        self.results_subtitle = ctk.CTkLabel(self.display_container, text="Showing 0 images...", font=("Inter", 13), text_color=self.colors["subtext"])
+        self.results_subtitle.pack(anchor="w", pady=(0, 20))
 
-        # 3. Status Bar
-        status_frame = tk.Frame(self.main_container, bg=self.colors["bg"], padx=20, pady=5)
-        status_frame.pack(fill="x")
-        tk.Label(status_frame, textvariable=self.status_text, bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 10)).pack(anchor="w")
-
-        # 4. Results Area (Scrollable)
-        self._build_results_area(self.main_container)
-
+        # Scrollable Grid
+        self.scroll_frame = ctk.CTkScrollableFrame(self.display_container, fg_color="transparent")
+        self.scroll_frame.pack(fill="both", expand=True)
+        # Configure columns for grid
+        for i in range(4): self.scroll_frame.grid_columnconfigure(i, weight=1, pad=15)
 
     def _build_header(self, parent):
-        header_frame = tk.Frame(parent, bg=self.colors["header"], pady=15, padx=20)
-        header_frame.pack(side="top", fill="x")
-        
-        # Title
-        title_label = tk.Label(header_frame, text="DeepSearch AI", bg=self.colors["header"], fg=self.colors["text"], font=("Outfit", 18, "bold"))
-        title_label.pack(side="left")
-        
-        # Settings Group
-        settings_frame = tk.Frame(header_frame, bg=self.colors["header"])
-        settings_frame.pack(side="right")
-        
-        # Current Folder Display
-        self.dir_label = tk.Label(settings_frame, text=self._get_display_path(), 
-                                  bg=self.colors["header"], fg=self.colors["subtext"], font=("Inter", 9), anchor="e")
-        self.dir_label.pack(side="left", padx=(0, 15))
+        header_container = ctk.CTkFrame(parent, fg_color="transparent")
+        header_container.pack(fill="x", padx=30, pady=(30, 0))
 
-        # Buttons
-        ModernButton(settings_frame, "Change Folder", self._select_folder, bg="#2D3436", hover_bg="#636e72", font=("Inter", 9)).pack(side="left", padx=5)
-        ModernButton(settings_frame, "Re-Index", self.reindex_thread, bg=self.colors["accent"], hover_bg="#584ab8", font=("Inter", 9, "bold")).pack(side="left", padx=5)
-        ModernButton(settings_frame, "Clean", self._clear_cache, bg=self.colors["danger"], hover_bg="#d32f2f", font=("Inter", 9)).pack(side="left", padx=5)
+        # Top row: Search Box & Actions
+        search_row = ctk.CTkFrame(header_container, fg_color="transparent", height=45)
+        search_row.pack(fill="x", pady=(0, 15))
 
-
-    def _build_search_area(self, parent):
-        search_frame = tk.Frame(parent, bg=self.colors["bg"], pady=20, padx=20)
-        search_frame.pack(fill="x")
+        # Search Box Entry
+        self.search_entry = ctk.CTkEntry(search_row, placeholder_text="Search photos by content...",
+                                         textvariable=self.search_text_var,
+                                         font=("Inter", 14), height=45, corner_radius=10,
+                                         fg_color="#FFFFFF", border_color=self.colors["border"],
+                                         text_color=self.colors["text"])
+        self.search_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.search_entry.bind("<Return>", lambda e: self.search_thread())
         
-        # Search Box Container
-        input_container = tk.Frame(search_frame, bg=self.colors["input_bg"], padx=10, pady=5)
-        input_container.pack(fill="x", expand=True)
-
-        # Icon/Label
-        tk.Label(input_container, text="🔍", bg=self.colors["input_bg"], fg=self.colors["subtext"], font=("Inter", 14)).pack(side="left", padx=5)
-
-        # Text Input
-        self.search_entry = tk.Entry(input_container, textvariable=self.search_text_var, 
-                                     font=("Inter", 14), bd=0, relief=tk.FLAT, 
-                                     bg=self.colors["input_bg"], fg=self.colors["text"], 
-                                     insertbackground=self.colors["text"])
-        self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
-        # self.search_entry.bind("<Return>", lambda e: self.search_thread())
-        self.search_entry.bind("<KeyRelease>", self._show_suggestions) 
-        
-        # Configure Drag and Drop for Search Bar
+        # Attach Drag and Drop to Entry and Main Window
         try:
+            self.root.drop_target_register(DND_FILES)
+            self.root.dnd_bind('<<Drop>>', self.handle_image_drop)
             self.search_entry.drop_target_register(DND_FILES)
             self.search_entry.dnd_bind('<<Drop>>', self.handle_image_drop)
-        except Exception as e:
-            print(f"DnD Error: {e}")
+        except Exception: pass
 
-        # Browse Image Button
-        img_btn = ModernButton(input_container, "📷 Image", self._select_image_query, bg=self.colors["input_bg"], hover_bg="#3D3D3D", fg=self.colors["accent"])
-        img_btn.pack(side="right")
+        # New Buttons
+        self.search_btn = ctk.CTkButton(search_row, text="Search", width=80,
+                                         fg_color=self.colors["text"], text_color="#FFFFFF",
+                                         hover_color="#374151", height=45, corner_radius=10,
+                                         font=("Inter", 13, "bold"), command=self.search_thread)
+        self.search_btn.pack(side="left", padx=(0, 10))
+
+        self.image_search_btn = ctk.CTkButton(search_row, text="📷 Image", width=80,
+                                               fg_color="#FFFFFF", text_color=self.colors["text"],
+                                               hover_color="#F3F4F6", height=45, corner_radius=10,
+                                               border_width=1, border_color=self.colors["border"],
+                                               font=("Inter", 13, "bold"), command=self._select_image_query)
+        self.image_search_btn.pack(side="left", padx=(0, 20))
+
+        # Action Buttons
+        self.change_folder_btn = ctk.CTkButton(search_row, text="Change Folder", width=120,
+                                               fg_color="#F3F4F6", text_color=self.colors["text"],
+                                               hover_color="#E5E7EB", height=45, corner_radius=10,
+                                               font=("Inter", 13, "bold"), command=self._select_folder)
+        self.change_folder_btn.pack(side="left", padx=(0, 10))
+
+        self.reindex_btn = ctk.CTkButton(search_row, text="Re-Index", width=100,
+                                         fg_color=self.colors["accent"], text_color="#FFFFFF",
+                                         hover_color="#DC2626", height=45, corner_radius=10,
+                                         font=("Inter", 13, "bold"), command=self.reindex_thread)
+        self.reindex_btn.pack(side="left")
+
+        # Bottom row: Quick Tags
+        self.tags_frame = ctk.CTkScrollableFrame(header_container, fg_color="transparent", height=40, orientation="horizontal")
+        self.tags_frame.pack(fill="x")
         
-        try:
-            img_btn.drop_target_register(DND_FILES)
-            img_btn.dnd_bind('<<Drop>>', self.handle_image_drop)
-        except Exception as e:
-            print(f"DnD Error: {e}")
+        ctk.CTkLabel(self.tags_frame, text="Quick Tags:", font=("Inter", 12, "bold"), text_color=self.colors["subtext"]).pack(side="left", padx=(0, 10))
         
-        # Submit Button
-        ModernButton(input_container, "Search", self.search_thread, bg=self.colors["accent"], hover_bg="#584ab8").pack(side="right", padx=10)
+        for keyword in self.SUGGESTION_KEYWORDS[:12]:
+            btn = ctk.CTkButton(self.tags_frame, text=keyword, 
+                                command=lambda k=keyword: self._quick_search(k),
+                                fg_color="#F3F4F6", text_color=self.colors["text"], hover_color="#E5E7EB",
+                                height=28, corner_radius=14, font=("Inter", 11))
+            btn.pack(side="left", padx=5)
 
-        # Suggestion Tags
-        self.suggestion_buttons_frame = tk.Frame(search_frame, bg=self.colors["bg"], pady=10)
-        self.suggestion_buttons_frame.pack(fill="x")
-        self._refresh_suggestions()
-
-        # Suggestion Listbox (Floating)
-        self.suggestions_listbox = tk.Listbox(parent, height=5, selectmode=tk.SINGLE, 
-                                          font=("Inter", 12), relief=tk.FLAT, bd=0,
-                                          background="#333333", fg=self.colors["text"], highlightthickness=0)
-        self.suggestions_listbox.place_forget()
-
-    def _build_results_area(self, parent):
-        # Scrolling Canvas
-        self.results_canvas = tk.Canvas(parent, bg=self.colors["bg"], borderwidth=0, highlightthickness=0)
-        self.results_canvas.pack(side="left", fill="both", expand=True, padx=20, pady=10)
-        
-        # Scrollbar
-        v_scrollbar = tk.Scrollbar(parent, orient="vertical", command=self.results_canvas.yview)
-        v_scrollbar.pack(side="right", fill="y")
-        self.results_canvas.configure(yscrollcommand=v_scrollbar.set)
-        
-        # Content Frame
-        self.results_frame = tk.Frame(self.results_canvas, bg=self.colors["bg"])
-        self.canvas_window = self.results_canvas.create_window((0, 0), window=self.results_frame, anchor="nw")
-        
-        # BINDINGS FOR SCROLLING
-        self._bind_mousewheel(self.results_canvas)
-        self._bind_mousewheel(self.results_frame)
-        self._bind_mousewheel(self.root) # Global scroll
-
-        # Layout management
-        self.results_frame.bind("<Configure>", self._on_frame_configure)
-        self.results_canvas.bind("<Configure>", self._on_canvas_configure)
-
-    def _bind_mousewheel(self, widget):
-        """Cross-platform scroll binding."""
-        widget.bind("<MouseWheel>", self._on_mousewheel)
-        widget.bind("<Button-4>", self._on_mousewheel) # Linux Scroll Up
-        widget.bind("<Button-5>", self._on_mousewheel) # Linux Scroll Down
-
-    def _on_mousewheel(self, event):
-        """Handle scroll."""
-        if platform.system() == "Darwin": # macOS
-             self.results_canvas.yview_scroll(int(-1*(event.delta)), "units")
-        elif event.num == 4: # Linux Up
-            self.results_canvas.yview_scroll(-1, "units")
-        elif event.num == 5: # Linux Down
-            self.results_canvas.yview_scroll(1, "units")
-        else: # Windows
-            self.results_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-
-    def _on_frame_configure(self, event):
-        """Reset the scroll region to encompass the inner frame."""
-        self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
-
-    def _on_canvas_configure(self, event):
-        """Expand the inner frame to fill the canvas width."""
-        canvas_width = event.width
-        self.results_canvas.itemconfig(self.canvas_window, width=canvas_width)
-
-    def _refresh_suggestions(self):
-        """Refresh suggestion buttons."""
-        for widget in self.suggestion_buttons_frame.winfo_children():
-            widget.destroy()
-            
-        tk.Label(self.suggestion_buttons_frame, text="Quick Tags:", bg=self.colors["bg"], fg=self.colors["subtext"], font=("Inter", 10, "bold")).pack(side="left", padx=(0, 10))
-        
-        for keyword in self.SUGGESTION_KEYWORDS[:8]: # Show top 8 keywords
-            btn = ModernButton(self.suggestion_buttons_frame, text=keyword, command=lambda k=keyword: self._quick_search(k), 
-                            bg="#2D2D2D", fg=self.colors["text"], hover_bg="#3D3D3D", padx=10, pady=4, font=("Inter", 9))
-            btn.pack(side="left", padx=4)
+    def load_selected_folder(self, choice):
+        if choice and choice != "No recent folders":
+            if os.path.exists(choice):
+                self.image_folder_path = choice
+                self.save_recent_folder(choice)
+                self._save_settings()
+                self.reindex_thread()
+            else:
+                self.status_text.set("Error: Folder not found.")
 
     def _get_display_path(self):
         if not self.image_folder_path: return "No Folder Selected"
@@ -528,7 +533,6 @@ class ImageSearchApp:
         if folder_selected:
             self.image_folder_path = folder_selected
             self.save_recent_folder(folder_selected)
-            self.dir_label.config(text=self._get_display_path())
             self._save_settings()
             self.reindex_thread()
             
@@ -551,34 +555,10 @@ class ImageSearchApp:
             
     def _quick_search(self, query):
         self.search_text_var.set(query)
+        self.search_entry.delete(0, tk.END)
+        self.search_entry.insert(0, query)
         self.search_thread()
 
-    def _show_suggestions(self, event):
-        if self.query_image_path.get():
-            self.suggestions_listbox.place_forget()
-            return
-        prefix = self.search_text_var.get().lower()
-        self.suggestions_listbox.delete(0, tk.END)
-        if not prefix:
-            self.suggestions_listbox.place_forget()
-            return
-        suggestions = [word for word in self.SUGGESTION_KEYWORDS if word.lower().startswith(prefix)]
-        if suggestions:
-            # Position listbox
-            entry_x = self.search_entry.winfo_rootx() - self.root.winfo_rootx()
-            entry_y = self.search_entry.winfo_rooty() - self.root.winfo_rooty() + self.search_entry.winfo_height() + 5
-            self.suggestions_listbox.place(x=entry_x, y=entry_y, width=self.search_entry.winfo_width())
-            for s in suggestions: self.suggestions_listbox.insert(tk.END, s)
-            self.suggestions_listbox.bind("<<ListboxSelect>>", self._select_suggestion)
-        else:
-            self.suggestions_listbox.place_forget()
-
-    def _select_suggestion(self, event):
-        if self.suggestions_listbox.curselection():
-            self.search_text_var.set(self.suggestions_listbox.get(self.suggestions_listbox.curselection()))
-            self.suggestions_listbox.place_forget()
-            self.search_thread()
-            
     def _select_image_query(self):
         filepath = filedialog.askopenfilename(title="Select Query Image", filetypes=[("Images", "*.jpg *.jpeg *.png *.webp *.heic")])
         if filepath:
@@ -598,14 +578,71 @@ class ImageSearchApp:
         self.search_by_image(filepath)
         
     def search_by_image(self, image_path):
-        """Trigger an image search programmatically."""
+        """Perform an isolated, direct FAISS image-to-image search."""
+        if not self.faiss_index:
+            self.status_text.set("Error: Index not loaded. Please select a folder.")
+            return
+
         filename = os.path.basename(image_path)
-        self.search_text_var.set(f"Searching by image: {filename}...")
+        self.status_text.set(f"Searching by image: {filename}...")
+        self.search_entry.delete(0, tk.END)
+        self.search_entry.insert(0, f"[Searching by Image]") # requested logic
         self.query_image_path.set(image_path)
-        self.search_thread()
+        
+        # Isolate the search logic in a thread to prevent UI freezing
+        threading.Thread(target=self._run_image_search_isolated, args=(image_path,), daemon=True).start()
+
+    def _run_image_search_isolated(self, image_path):
+        """The core internal logic strictly for full AI image-to-image search."""
+        try:
+            # 1. Load the image
+            img = Image.open(image_path).convert("RGB")
+            
+            # 2. Preprocess for CLIP
+            image_tensor = self.preprocess(img).unsqueeze(0).to(DEVICE)
+            
+            # 3. Get the vector
+            with torch.no_grad():
+                image_features = self.model.encode_image(image_tensor)
+                
+            # 4. Convert to numpy & normalize
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+            image_features_np = image_features.cpu().numpy().astype('float32')
+            
+            # 5. Search FAISS
+            D, I = self.faiss_index.search(image_features_np, k=K_MATCHES)
+            
+            # 6. Map the indices back to file paths and scale match %
+            results_map = {}
+            for i in range(len(I[0])):
+                idx = I[0][i]
+                score = float(D[0][i])
+                match_percentage = (1 - (score / 2.5)) * 100 # Original scaling metric
+                
+                if match_percentage < 5.0: continue
+                
+                mapped_filename = self.filenames[idx]
+                results_map[mapped_filename] = match_percentage
+                
+            # 7. Sort
+            sorted_results = sorted(results_map.items(), key=lambda x: x[1], reverse=True)[:K_MATCHES]
+            
+            # 8. Update the UI
+            self.root.after(0, lambda: self.populate_grid(sorted_results, image_path))
+            self.root.after(0, lambda: self.status_text.set(f"Found {len(sorted_results)} image matches."))
+            
+        except Exception as e:
+            self.root.after(0, lambda err=e: self.status_text.set(f"Search Error: {err}"))
 
     def search_thread(self):
-        if self.search_text_var.get(): self.query_image_path.set("")
+        # Do not use old text/image combined runner if image path is set
+        if self.query_image_path.get() and "[Searching by Image]" in self.search_entry.get():
+            return
+            
+        if self.search_text_var.get(): 
+            self.query_image_path.set("")
+            
+        # self.search_entry.delete(0, tk.END) # Clear visual search bar on enterprise search
         threading.Thread(target=self._run_search, daemon=True).start()
         
     def reindex_thread(self):
@@ -613,28 +650,19 @@ class ImageSearchApp:
 
     def _run_search(self):
         text_query = self.search_text_var.get()
-        image_query = self.query_image_path.get()
         
         if not self.faiss_index:
             self.status_text.set("Error: Index not loaded.")
             return
 
-        if not text_query and not image_query: return
+        if not text_query: return
 
         self.status_text.set(f"Searching...")
         
         # --- Get Query Vector ---
+        # Extract query vector exclusively for TEXT in this function
         query_vector = None
-        if image_query:
-            try:
-                img = Image.open(image_query).convert("RGB")
-                img_tensor = self.preprocess(img).unsqueeze(0).to(DEVICE)
-                with torch.no_grad():
-                    query_vector = self.model.encode_image(img_tensor)
-            except Exception as e:
-                self.status_text.set(f"Error: {e}")
-                return
-        elif text_query:
+        if text_query:
             text_token = clip.tokenize([text_query]).to(DEVICE)
             with torch.no_grad():
                 query_vector = self.model.encode_text(text_token)
@@ -671,65 +699,88 @@ class ImageSearchApp:
                 final_scores[filename] = match_percentage
 
         sorted_results = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)[:K_MATCHES]
-        self.root.after(0, lambda: self._display_results(sorted_results, image_query))
+        self.root.after(0, lambda: self._display_results(sorted_results, None))
+
+    # --- Results Rendering (Populate Grid) ---
 
     def _display_results(self, results, query_image_path=None):
-        for widget in self.results_frame.winfo_children(): widget.destroy()
+        """Populate the grid with results."""
+        self.populate_grid(results, query_image_path)
+
+    def populate_grid(self, results_list, query_image_path=None):
+        """Take results and place CTkFrame 'Cards' into the scrollable frame."""
+        # Clear existing
+        for widget in self.scroll_frame.winfo_children():
+            widget.destroy()
+            
+        # Update Subtitle
+        count = len(results_list)
+        self.results_subtitle.configure(text=f"Showing {count} images...")
 
         columns = 4
-        
-        # If Query Image, show it
         row_offset = 0
-        if query_image_path:
-            self._render_card(query_image_path, "Query Image", "Source", 0, 0, highlight=True)
-            row_offset = 1
         
-        for index, (filename, score) in enumerate(results):
+        # If Query Image, show it first
+        if query_image_path:
+            self._render_card(query_image_path, "Query Image", "Input Source", 0, 0, highlight=True)
+            row_offset = 1
+            
+        for index, (filename, score) in enumerate(results_list):
             path = os.path.join(self.image_folder_path, filename)
             row = (index // columns) + row_offset
             col = index % columns
-            self._render_card(path, filename, f"{score:.1f}% Match", row, col)
-            
-        # Update scroll area
-        self.results_frame.update_idletasks()
-        self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
+            self._render_card(path, filename, f"Match: {score:.1f}%", row, col)
 
     def _render_card(self, path, title, subtitle, row, col, highlight=False):
-        """Create result card."""
-        bg_color = self.colors["card"] if not highlight else "#3D2C4D"
+        """Create a modernized white card."""
+        bg_color = self.colors["active_bg"] if highlight else self.colors["sidebar_bg"]
         
-        card = tk.Frame(self.results_frame, bg=bg_color, padx=10, pady=10)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, corner_radius=12, border_width=1, border_color="#F3F4F6")
         card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
 
-        # Load Image
+        # Load & Process Image for Card
         try:
             catalog_dir, _, _, _, _ = get_catalog_paths(self.image_folder_path)
             THUMBNAIL_FOLDER = os.path.join(catalog_dir, "thumbnails")
-            os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
             thumb_path = os.path.join(THUMBNAIL_FOLDER, os.path.basename(path))
 
-            img = None
+            # Try to get existing thumb or create one
+            pil_img = None
             if os.path.exists(thumb_path):
-                try: img = Image.open(thumb_path)
-                except: pass
+                pil_img = Image.open(thumb_path)
+            else:
+                pil_img = Image.open(path)
+                pil_img = ImageOps.pad(pil_img, (300, 300), color=bg_color)
             
-            if not img:
-                img = Image.open(path)
-                # Aspect Ratio Cover
-                img = ImageOps.fit(img, (220, 160), Image.Resampling.LANCZOS) 
-
-            # Create rounded mask
-            photo = ImageTk.PhotoImage(img)
+            # Wrap in CTkImage
+            ctk_img = ctk.CTkImage(light_image=pil_img, size=(160, 160))
             
-            lbl_img = tk.Label(card, image=photo, bg=bg_color)
-            lbl_img.image = photo # Retain reference
-            lbl_img.pack()
+            img_label = ctk.CTkLabel(card, image=ctk_img, text="", corner_radius=8)
+            img_label.image = ctk_img # Ref
+            img_label.pack(pady=(12, 5), padx=12)
             
-            tk.Label(card, text=title[:20], bg=bg_color, fg=self.colors["text"], font=("Inter", 9, "bold")).pack(pady=(5,0))
-            tk.Label(card, text=subtitle, bg=bg_color, fg=self.colors["accent"] if not highlight else "#fff", font=("Inter", 9)).pack()
+            # Metadata
+            filename_label = ctk.CTkLabel(card, text=title[:18] + "..." if len(title) > 18 else title, 
+                                          font=("Inter", 13, "bold"), text_color=self.colors["text"])
+            filename_label.pack(pady=(5, 0), padx=12, anchor="w")
             
-        except Exception as e:
-            tk.Label(card, text="Error", bg=bg_color, fg="red").pack()
+            # Bottom Info Row
+            info_row = ctk.CTkFrame(card, fg_color="transparent")
+            info_row.pack(fill="x", padx=12, pady=(2, 12))
+            
+            # Get file size if exists
+            size_str = "Unknown"
+            if os.path.exists(path):
+                size_mb = os.path.getsize(path) / (1024 * 1024)
+                size_str = f"{size_mb:.1f} MB"
+            
+            ctk.CTkLabel(info_row, text=size_str, font=("Inter", 11), text_color=self.colors["subtext"]).pack(side="left")
+            
+            match_color = self.colors["success"] if not highlight else self.colors["accent"]
+            ctk.CTkLabel(info_row, text=subtitle, font=("Inter", 11, "bold"), text_color=match_color).pack(side="right")
+            
+        except Exception:
+            ctk.CTkLabel(card, text="Image Error", text_color="red").pack(pady=40)
 
     def _on_closing(self):
         """Exit cleanup."""
