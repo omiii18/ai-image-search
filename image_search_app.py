@@ -1,5 +1,7 @@
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
+import sys
+import subprocess
 import pickle
 import torch
 import clip
@@ -17,7 +19,6 @@ import shutil
 import pillow_heif  # HEIC support
 import sqlite3
 import platform
-import sys
 import multiprocessing
 
 def resource_path(relative_path):
@@ -106,9 +107,17 @@ class ImageSearchApp:
         # Link status_text to the UI label
         self.status_text.trace_add("write", lambda *args: self._sync_status_label())
 
-        # --- Suggestions ---
-        self.DEFAULT_KEYWORDS = ["dance", "night drives", "parties", "trips", "beach", "food", "animal", "sunset"]
-        self.SUGGESTION_KEYWORDS = self._load_keywords()
+        # --- Dynamic Suggestions Vocabulary ---
+        self.candidate_tags = [
+            "people", "nature", "vehicles", "documents", "screenshots", 
+            "food", "buildings", "animals", "text", "night", 
+            "indoor", "outdoor", "portraits", "landscapes", "art",
+            "sports", "water", "sky", "flowers", "clothing",
+            "furniture", "electronics", "tools", "toys", "signs",
+            "drawings", "paintings", "diagrams", "memes", "concerts",
+            "weddings", "mountains", "beaches", "forests", "cities"
+        ]
+        self.current_top_tags = ["search", "indexing..."]
 
         # Custom Theme Colors (Light Theme)
         self.colors = {
@@ -135,17 +144,24 @@ class ImageSearchApp:
         if hasattr(self, "status_label"):
             self.status_label.configure(text=self.status_text.get())
 
-    def _load_keywords(self):
-        """Load keywords from file."""
-        if self.image_folder_path:
-            try:
-                _, _, _, keywords_file, _ = get_catalog_paths(self.image_folder_path)
-                if os.path.exists(keywords_file):
-                    with open(keywords_file, 'r') as f:
-                        return json.load(f)
-            except:
-                pass
-        return self.DEFAULT_KEYWORDS
+    def update_quick_tags_ui(self, top_tags):
+        """Rebuild the UI tag buttons dynamically with the top identified categories."""
+        if not hasattr(self, "tags_frame"): return
+        
+        # 1. Clear existing buttons
+        for widget in self.tags_frame.winfo_children():
+            # Keep the "Quick Tags:" label intact
+            if isinstance(widget, ctk.CTkButton):
+                widget.destroy()
+                
+        # 2. Rebuild tags
+        self.current_top_tags = top_tags
+        for keyword in top_tags:
+            btn = ctk.CTkButton(self.tags_frame, text=keyword, 
+                                command=lambda k=keyword: self._quick_search(k),
+                                fg_color="#F3F4F6", text_color=self.colors["text"], hover_color="#E5E7EB",
+                                height=28, corner_radius=14, font=("Inter", 11))
+            btn.pack(side="left", padx=5)
 
     def _load_settings(self):
         """Load settings."""
@@ -270,6 +286,10 @@ class ImageSearchApp:
 
             with open(mapping_file, "rb") as f:
                 self.filenames = pickle.load(f)
+                
+            # --- Generate Dynamic Tags ---
+            threading.Thread(target=self.generate_dynamic_tags, daemon=True).start()
+            
         except Exception as e:
             print(f"Error loading index: {e}")
             self.faiss_index = None
@@ -404,7 +424,7 @@ class ImageSearchApp:
             fg_color=self.colors["sidebar_bg"], text_color=self.colors["text"],
             button_color=self.colors["sidebar_bg"], button_hover_color="#F3F4F6", dropdown_hover_color="#FEE2E2"
         )
-        self.folders_dropdown.set("📁 Recent Folders")
+        self.folders_dropdown.set("Recent Folders")
         self.folders_dropdown.pack(fill="x", padx=15, pady=5)
 
         # Sidebar Bottom: Indexing Status
@@ -481,7 +501,7 @@ class ImageSearchApp:
                                          font=("Inter", 13, "bold"), command=self.search_thread)
         self.search_btn.pack(side="left", padx=(0, 10))
 
-        self.image_search_btn = ctk.CTkButton(search_row, text="📷 Image", width=80,
+        self.image_search_btn = ctk.CTkButton(search_row, text="Image", width=80,
                                                fg_color="#FFFFFF", text_color=self.colors["text"],
                                                hover_color="#F3F4F6", height=45, corner_radius=10,
                                                border_width=1, border_color=self.colors["border"],
@@ -507,7 +527,7 @@ class ImageSearchApp:
         
         ctk.CTkLabel(self.tags_frame, text="Quick Tags:", font=("Inter", 12, "bold"), text_color=self.colors["subtext"]).pack(side="left", padx=(0, 10))
         
-        for keyword in self.SUGGESTION_KEYWORDS[:12]:
+        for keyword in self.current_top_tags[:12]:
             btn = ctk.CTkButton(self.tags_frame, text=keyword, 
                                 command=lambda k=keyword: self._quick_search(k),
                                 fg_color="#F3F4F6", text_color=self.colors["text"], hover_color="#E5E7EB",
@@ -577,6 +597,22 @@ class ImageSearchApp:
             
         self.search_by_image(filepath)
         
+    def reveal_file_in_os(self, file_path):
+        """Cross-platform method to highlight a file in the OS native file explorer."""
+        if not os.path.exists(file_path):
+            self.status_text.set(f"Error: File no longer exists: {os.path.basename(file_path)}")
+            return
+            
+        try:
+            if sys.platform == "darwin":  # macOS
+                subprocess.Popen(["open", "-R", file_path])
+            elif sys.platform == "win32": # Windows
+                subprocess.Popen(f'explorer /select,"{os.path.normpath(file_path)}"')
+            else:                         # Linux
+                subprocess.Popen(["xdg-open", os.path.dirname(file_path)])
+        except Exception as e:
+            self.status_text.set(f"Error opening file explorer: {str(e)}")
+
     def search_by_image(self, image_path):
         """Perform an isolated, direct FAISS image-to-image search."""
         if not self.faiss_index:
@@ -644,6 +680,41 @@ class ImageSearchApp:
             
         # self.search_entry.delete(0, tk.END) # Clear visual search bar on enterprise search
         threading.Thread(target=self._run_search, daemon=True).start()
+        
+    def generate_dynamic_tags(self):
+        """Run Zero-Shot classification to detect prominent folder themes."""
+        if not self.faiss_index or not self.model or self.faiss_index.ntotal == 0:
+            return
+            
+        try:
+            tag_scores = {}
+            for tag in self.candidate_tags:
+                # 1. Encode Word
+                text_token = clip.tokenize([tag]).to(DEVICE)
+                with torch.no_grad():
+                    query_vector = self.model.encode_text(text_token)
+                
+                # Normalize & Numpy
+                query_vector = query_vector / query_vector.norm(dim=-1, keepdim=True)
+                query_vector_np = query_vector.cpu().numpy().astype('float32')
+                
+                # 2. Search FAISS for top 5
+                D, _ = self.faiss_index.search(query_vector_np, k=5)
+                
+                # 3. Calculate Average distance (lower is better)
+                avg_distance = float(np.mean(D[0]))
+                tag_scores[tag] = avg_distance
+                
+            # 4. Sort and extract top 5-7
+            # Lower L2 distance means higher similarity/relevance to the tag
+            sorted_tags = sorted(tag_scores.items(), key=lambda x: x[1])
+            top_tags = [t[0] for t in sorted_tags[:6]]
+            
+            # 5. Push UI update to main thread
+            self.root.after(0, lambda: self.update_quick_tags_ui(top_tags))
+            
+        except Exception as e:
+            print(f"Error generating context tags: {e}")
         
     def reindex_thread(self):
         threading.Thread(target=self._check_and_index_photos, daemon=True).start()
@@ -755,14 +826,18 @@ class ImageSearchApp:
             # Wrap in CTkImage
             ctk_img = ctk.CTkImage(light_image=pil_img, size=(160, 160))
             
-            img_label = ctk.CTkLabel(card, image=ctk_img, text="", corner_radius=8)
+            img_label = ctk.CTkLabel(card, image=ctk_img, text="", corner_radius=8, cursor="hand2")
             img_label.image = ctk_img # Ref
             img_label.pack(pady=(12, 5), padx=12)
             
+            # Bind Click Event to Reveal File
+            img_label.bind("<Button-1>", lambda event, p=path: self.reveal_file_in_os(p))
+            
             # Metadata
             filename_label = ctk.CTkLabel(card, text=title[:18] + "..." if len(title) > 18 else title, 
-                                          font=("Inter", 13, "bold"), text_color=self.colors["text"])
+                                          font=("Inter", 13, "bold"), text_color=self.colors["text"], cursor="hand2")
             filename_label.pack(pady=(5, 0), padx=12, anchor="w")
+            filename_label.bind("<Button-1>", lambda event, p=path: self.reveal_file_in_os(p))
             
             # Bottom Info Row
             info_row = ctk.CTkFrame(card, fg_color="transparent")
