@@ -7,6 +7,7 @@ import faiss
 import numpy as np
 import tkinter as tk
 from tkinter import messagebox, filedialog
+from tkinterdnd2 import TkinterDnD, DND_FILES
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 import customtkinter as ctk
 import json
@@ -425,9 +426,23 @@ class ImageSearchApp:
         self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
         # self.search_entry.bind("<Return>", lambda e: self.search_thread())
         self.search_entry.bind("<KeyRelease>", self._show_suggestions) 
+        
+        # Configure Drag and Drop for Search Bar
+        try:
+            self.search_entry.drop_target_register(DND_FILES)
+            self.search_entry.dnd_bind('<<Drop>>', self.handle_image_drop)
+        except Exception as e:
+            print(f"DnD Error: {e}")
 
         # Browse Image Button
-        ModernButton(input_container, "📷 Image", self._select_image_query, bg=self.colors["input_bg"], hover_bg="#3D3D3D", fg=self.colors["accent"]).pack(side="right")
+        img_btn = ModernButton(input_container, "📷 Image", self._select_image_query, bg=self.colors["input_bg"], hover_bg="#3D3D3D", fg=self.colors["accent"])
+        img_btn.pack(side="right")
+        
+        try:
+            img_btn.drop_target_register(DND_FILES)
+            img_btn.dnd_bind('<<Drop>>', self.handle_image_drop)
+        except Exception as e:
+            print(f"DnD Error: {e}")
         
         # Submit Button
         ModernButton(input_container, "Search", self.search_thread, bg=self.colors["accent"], hover_bg="#584ab8").pack(side="right", padx=10)
@@ -567,9 +582,27 @@ class ImageSearchApp:
     def _select_image_query(self):
         filepath = filedialog.askopenfilename(title="Select Query Image", filetypes=[("Images", "*.jpg *.jpeg *.png *.webp *.heic")])
         if filepath:
-            self.query_image_path.set(filepath)
-            self.search_text_var.set("")
-            self.search_thread()
+            self.search_by_image(filepath)
+            
+    def handle_image_drop(self, event):
+        """Handle Drag and Drop image files."""
+        # Remove curly braces on Mac/Windows paths
+        filepath = event.data.strip('{}') 
+        
+        # Validation
+        valid_exts = (".jpg", ".jpeg", ".png", ".webp", ".heic")
+        if not filepath.lower().endswith(valid_exts):
+            self.status_text.set("Error: Unsupported file type dropped. Please use images only.")
+            return
+            
+        self.search_by_image(filepath)
+        
+    def search_by_image(self, image_path):
+        """Trigger an image search programmatically."""
+        filename = os.path.basename(image_path)
+        self.search_text_var.set(f"Searching by image: {filename}...")
+        self.query_image_path.set(image_path)
+        self.search_thread()
 
     def search_thread(self):
         if self.search_text_var.get(): self.query_image_path.set("")
@@ -716,7 +749,13 @@ class ImageSearchApp:
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    root = tk.Tk()
+    try:
+        # Initializing core OS Drag-and-Drop capability wrapper
+        root = TkinterDnD.Tk()
+    except Exception as e:
+        print(f"TkinterDnD initialization failed, falling back to standard Tk. Error: {e}")
+        root = tk.Tk()
+        
     app = ImageSearchApp(root)
     # Bind close event
     root.protocol("WM_DELETE_WINDOW", app._on_closing)
