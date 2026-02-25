@@ -8,3 +8,5 @@ pillow-heif # HEIF image format support for Pillow (mostly found in iOS devices)
 git+https://github.com/openai/CLIP.git # OpenAI's CLIP model for image and text processing
 pytesseract # Python-tesseract is an optical character recognition (OCR) tool for python
 tqdm # Progress bar library for Python
+tkinterdnd2 # Drag and drop support for Tkinter
+customtkinter # Modern UI library for Tkinter
