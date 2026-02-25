@@ -469,6 +469,9 @@ class ImageSearchApp:
         # Configure columns for grid
         for i in range(4): self.scroll_frame.grid_columnconfigure(i, weight=1, pad=15)
 
+        # Smooth Scroll Binding
+        self._setup_smooth_scroll()
+
         # 4. Search Footer
         self.footer_label = ctk.CTkLabel(self.display_container, 
                                         text="DeepSearch AI v1.1 | Developed with ❤️ by Omkar Karne", 
@@ -686,6 +689,73 @@ class ImageSearchApp:
             
         # self.search_entry.delete(0, tk.END) # Clear visual search bar on enterprise search
         threading.Thread(target=self._run_search, daemon=True).start()
+
+    def _setup_smooth_scroll(self):
+        """Setup smooth momentum scrolling for the main results grid."""
+        self.scroll_canvas = self.scroll_frame._parent_canvas
+        self.scroll_target = 0.0
+        self.scroll_current = 0.0
+        self.is_scrolling = False
+
+        # Bind mouse wheel (OS dependent)
+        bind_key = "<MouseWheel>" if sys.platform != "linux" else "<Button-4>"
+        self.scroll_frame.bind_all(bind_key, self._on_smooth_mousewheel)
+        if sys.platform == "linux":
+            self.scroll_frame.bind_all("<Button-5>", self._on_smooth_mousewheel)
+
+    def _on_smooth_mousewheel(self, event):
+        """Intercept scroll and calculate smooth target."""
+        # Normalized delta
+        delta = event.delta if sys.platform != "darwin" else event.delta * 20
+        if sys.platform == "linux":
+            delta = 120 if event.num == 4 else -120
+
+        pixels = -delta * 0.5
+        
+        # Pixel offset
+        self.scroll_target += pixels
+        
+        # Clamp to bounds - recalculate max_scroll dynamically
+        bbox = self.scroll_canvas.bbox("all")
+        if not bbox: return "break"
+        
+        visible_h = self.scroll_canvas.winfo_height()
+        content_h = bbox[3]
+        max_scroll = max(0, content_h - visible_h)
+        
+        self.scroll_target = max(0, min(self.scroll_target, max_scroll))
+
+        if not self.is_scrolling:
+            self._scroll_animate()
+        
+        return "break" # Prevent double scrolling
+
+    def _scroll_animate(self):
+        """Interpolate towards the scroll target with a settling threshold."""
+        self.is_scrolling = True
+        diff = self.scroll_target - self.scroll_current
+        
+        if abs(diff) > 0.1: # Tighter threshold for settling
+            # Power damping for smooth deceleration
+            self.scroll_current += diff * 0.2 # Slightly faster damping
+            
+            # Snap to target if very close to avoid micro-jitter
+            if abs(self.scroll_target - self.scroll_current) < 0.5:
+                self.scroll_current = self.scroll_target
+
+            # Convert to fraction for yview
+            bbox = self.scroll_canvas.bbox("all")
+            if bbox and bbox[3] > 0:
+                fraction = self.scroll_current / bbox[3]
+                # Ensure don't exceed the true scrollable range fraction
+                visible_h = self.scroll_canvas.winfo_height()
+                max_fraction = max(0, (bbox[3] - visible_h) / bbox[3])
+                self.scroll_canvas.yview_moveto(min(fraction, max_fraction))
+            
+            self.root.after(8, self._scroll_animate) # Faster polling for smoothness
+        else:
+            self.scroll_current = self.scroll_target
+            self.is_scrolling = False
         
     def generate_dynamic_tags(self):
         """Run Zero-Shot classification to detect prominent folder themes."""
@@ -781,17 +851,18 @@ class ImageSearchApp:
     # --- Results Rendering (Populate Grid) ---
 
     def _display_results(self, results, query_image_path=None):
-        """Populate the grid with results."""
-        self.populate_grid(results, query_image_path)
+        """Populate the grid with results using a staggered animation."""
+        # Reset scroll position smoothly
+        self.scroll_target = 0
+        self.scroll_current = 0
+        self.scroll_canvas.yview_moveto(0)
 
-    def populate_grid(self, results_list, query_image_path=None):
-        """Take results and place CTkFrame 'Cards' into the scrollable frame."""
-        # Clear existing
+        # Clear existing with a slight delay to prevent flicker
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
             
         # Update Subtitle
-        count = len(results_list)
+        count = len(results)
         self.results_subtitle.configure(text=f"Showing {count} images...")
 
         columns = 4
@@ -802,11 +873,29 @@ class ImageSearchApp:
             self._render_card(query_image_path, "Query Image", "Input Source", 0, 0, highlight=True)
             row_offset = 1
             
-        for index, (filename, score) in enumerate(results_list):
+        def staggered_render(idx):
+            if idx >= len(results): return
+            
+            filename, score = results[idx]
             path = os.path.join(self.image_folder_path, filename)
-            row = (index // columns) + row_offset
-            col = index % columns
-            self._render_card(path, filename, f"Match: {score:.1f}%", row, col)
+            row = (idx // columns) + row_offset
+            col = idx % columns
+            
+            card = self._render_card(path, filename, f"Match: {score:.1f}%", row, col)
+            
+            # Animate card appearance (fade/slide simulation)
+            card.configure(fg_color="#F3F4F6") # Start with neutral
+            self.root.after(10, lambda: card.configure(fg_color=self.colors["sidebar_bg"]))
+            
+            # Next one after a small delay
+            self.root.after(30, lambda: staggered_render(idx + 1))
+
+        # Start staggered rendering
+        staggered_render(0)
+
+    def populate_grid(self, results_list, query_image_path=None):
+        """Legacy method redirected to new animator."""
+        self._display_results(results_list, query_image_path)
 
     def _render_card(self, path, title, subtitle, row, col, highlight=False):
         """Create a modernized white card."""
@@ -815,53 +904,59 @@ class ImageSearchApp:
         card = ctk.CTkFrame(self.scroll_frame, fg_color=bg_color, corner_radius=12, border_width=1, border_color="#F3F4F6")
         card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
 
-        # Load & Process Image for Card
-        try:
-            catalog_dir, _, _, _, _ = get_catalog_paths(self.image_folder_path)
-            THUMBNAIL_FOLDER = os.path.join(catalog_dir, "thumbnails")
-            thumb_path = os.path.join(THUMBNAIL_FOLDER, os.path.basename(path))
+        # Metadata
+        filename_label = ctk.CTkLabel(card, text=title[:18] + "..." if len(title) > 18 else title, 
+                                      font=("Inter", 13, "bold"), text_color=self.colors["text"], cursor="hand2")
+        filename_label.pack(pady=(5, 0), padx=12, anchor="w")
+        filename_label.bind("<Button-1>", lambda event, p=path: self.reveal_file_in_os(p))
+        
+        # Bottom Info Row
+        info_row = ctk.CTkFrame(card, fg_color="transparent")
+        info_row.pack(fill="x", padx=12, pady=(2, 12))
+        
+        # Bottom Stats (Match Score)
+        match_color = self.colors["success"] if not highlight else self.colors["accent"]
+        score_label = ctk.CTkLabel(info_row, text=subtitle, font=("Inter", 11, "bold"), text_color=match_color)
+        score_label.pack(side="right")
+        
+        # Placeholder for Image (Prevents Jitter)
+        img_label = ctk.CTkLabel(card, text="⌛", font=("Inter", 24), text_color=self.colors["subtext"], 
+                                 width=160, height=160, corner_radius=8, cursor="hand2")
+        img_label.pack(pady=(12, 5), padx=12, before=filename_label)
 
-            # Try to get existing thumb or create one
-            pil_img = None
-            if os.path.exists(thumb_path):
-                pil_img = Image.open(thumb_path)
-            else:
-                pil_img = Image.open(path)
-                pil_img = ImageOps.pad(pil_img, (300, 300), color=bg_color)
-            
-            # Wrap in CTkImage
-            ctk_img = ctk.CTkImage(light_image=pil_img, size=(160, 160))
-            
-            img_label = ctk.CTkLabel(card, image=ctk_img, text="", corner_radius=8, cursor="hand2")
-            img_label.image = ctk_img # Ref
-            img_label.pack(pady=(12, 5), padx=12)
-            
-            # Bind Click Event to Reveal File
-            img_label.bind("<Button-1>", lambda event, p=path: self.reveal_file_in_os(p))
-            
-            # Metadata
-            filename_label = ctk.CTkLabel(card, text=title[:18] + "..." if len(title) > 18 else title, 
-                                          font=("Inter", 13, "bold"), text_color=self.colors["text"], cursor="hand2")
-            filename_label.pack(pady=(5, 0), padx=12, anchor="w")
-            filename_label.bind("<Button-1>", lambda event, p=path: self.reveal_file_in_os(p))
-            
-            # Bottom Info Row
-            info_row = ctk.CTkFrame(card, fg_color="transparent")
-            info_row.pack(fill="x", padx=12, pady=(2, 12))
-            
-            # Get file size if exists
-            size_str = "Unknown"
-            if os.path.exists(path):
-                size_mb = os.path.getsize(path) / (1024 * 1024)
-                size_str = f"{size_mb:.1f} MB"
-            
-            ctk.CTkLabel(info_row, text=size_str, font=("Inter", 11), text_color=self.colors["subtext"]).pack(side="left")
-            
-            match_color = self.colors["success"] if not highlight else self.colors["accent"]
-            ctk.CTkLabel(info_row, text=subtitle, font=("Inter", 11, "bold"), text_color=match_color).pack(side="right")
-            
-        except Exception:
-            ctk.CTkLabel(card, text="Image Error", text_color="red").pack(pady=40)
+        def _async_load():
+            try:
+                catalog_dir, _, _, _, _ = get_catalog_paths(self.image_folder_path)
+                THUMBNAIL_FOLDER = os.path.join(catalog_dir, "thumbnails")
+                thumb_path = os.path.join(THUMBNAIL_FOLDER, os.path.basename(path))
+
+                if os.path.exists(thumb_path):
+                    pil_img = Image.open(thumb_path)
+                else:
+                    pil_img = Image.open(path)
+                    pil_img = ImageOps.pad(pil_img, (300, 300), color=bg_color)
+                
+                # Wrap in CTkImage
+                ctk_img = ctk.CTkImage(light_image=pil_img, size=(160, 160))
+                
+                # Update on main thread
+                if self.root.winfo_exists():
+                    self.root.after(0, lambda: self._safe_update_image(img_label, ctk_img, path))
+            except Exception:
+                pass
+
+        threading.Thread(target=_async_load, daemon=True).start()
+        
+        return card
+
+    def _safe_update_image(self, label, image, path):
+        """Safely update label with image after loading."""
+        try:
+            if label.winfo_exists():
+                label.configure(image=image, text="")
+                label.image = image # Ref
+                label.bind("<Button-1>", lambda event, p=path: self.reveal_file_in_os(p))
+        except Exception: pass
 
     def _on_closing(self):
         """Exit cleanup."""
