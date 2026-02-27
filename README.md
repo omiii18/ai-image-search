@@ -12,7 +12,7 @@
 *   **Dynamic Contextual Tags**: Instead of static filters, the app performs a **Zero-Shot AI analysis** of your folder content to generate the most relevant "Quick Tags" automatically.
 *   **Drag-and-Drop Interaction**: Instantly search by dropping any image file directly into the application window or search bar.
 *   **Native OS Integration**: Click on any search result to **"Reveal in Finder/File Explorer"**, highlighting the exact file location on your system.
-*   **100% Local & Private**: Runs entirely on your machine. No data is ever sent to the cloud. Optimized for macOS (Apple Silicon compatible).
+*   **100% Local & Private**: Runs entirely on your machine. No data is ever sent to the cloud. Optimized for both **Windows** and **macOS** (Apple Silicon compatible).
 *   **Modern Desktop GUI**: A sleek, premium light-themed interface built with **CustomTkinter**, featuring glassmorphism elements and responsive result grids.
 *   **Broad Format Support**: Supports standard formats (JPG, PNG, WEBP) and **HEIC** (Apple High Efficiency Image Container).
 *   **Auto-Indexing**: Automatically detects new images in your selected folder and updates the FAISS index with a real-time progress bar.
@@ -41,16 +41,22 @@ This project combines state-of-the-art Computer Vision and NLP models:
 
 ---
 
-## 📥 Download & Quick Start (macOS)
+## 📥 Download & Quick Start
 
-If you just want to use the app without setting up Python:
+### macOS
 1.  Go to the [Latest Release](https://github.com/omiii18/ai-image-search/releases).
 2.  Download the `DeepSearchAI_macOS.zip` file.
 3.  Unzip the file and move `DeepSearchAI.app` to your `Applications` folder.
 4.  **Right-click** the app and select **"Open"** (needed for the first time as it's not signed).
 
+### Windows
+1.  Go to the [Latest Release](https://github.com/omiii18/ai-image-search/releases).
+2.  Download the `DeepSearchAI_windowsOS.zip` file.
+3.  Extract the ZIP folder to a location of your choice.
+4.  Run `DeepSearchAI.exe` to launch the application.
+
 > [!NOTE]
-> You still need to have [Tesseract OCR](https://tesseract-ocr.github.io/tessdoc/Installation.html) installed on your system for text search to work.
+> You still need to have [Tesseract OCR](https://tesseract-ocr.github.io/tessdoc/Installation.html) installed on your system for text search to work. For Windows, download the installer from [here](https://github.com/UB-Mannheim/tesseract/wiki).
 
 ---
 
