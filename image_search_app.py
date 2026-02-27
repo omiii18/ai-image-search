@@ -1,6 +1,13 @@
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 import sys
+
+# Fix for running with pythonw.exe (no console) where sys.stdout/stderr are None
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
 import subprocess
 import pickle
 import torch
