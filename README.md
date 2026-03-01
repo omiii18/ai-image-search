@@ -12,6 +12,7 @@
 *   **Dynamic Contextual Tags**: Instead of static filters, the app performs a **Zero-Shot AI analysis** of your folder content to generate the most relevant "Quick Tags" automatically.
 *   **Drag-and-Drop Interaction**: Instantly search by dropping any image file directly into the application window or search bar.
 *   **Native OS Integration**: Click on any search result to **"Reveal in Finder/File Explorer"**, highlighting the exact file location on your system.
+*   **Smart Auto-Albums**: Automatically groups photos into virtual albums (e.g., "Portraits", "Night", "Landscapes") using **dynamic semantic thresholding**.
 *   **100% Local & Private**: Runs entirely on your machine. No data is ever sent to the cloud. Optimized for both **Windows** and **macOS** (Apple Silicon compatible).
 *   **Modern Desktop GUI**: A sleek, premium light-themed interface built with **CustomTkinter**, featuring glassmorphism elements and responsive result grids.
 *   **Broad Format Support**: Supports standard formats (JPG, PNG, WEBP) and **HEIC** (Apple High Efficiency Image Container).
@@ -38,6 +39,11 @@ This project combines state-of-the-art Computer Vision and NLP models:
 4.  **Retrieval & Ranking**:
     *   When you search, your query is processed both semantically (CLIP) and literally (OCR).
     *   The app combines cosine similarity scores and keyword matches to rank results instantaneously.
+
+5.  **Smart Auto-Albums**: 
+    *   After indexing, the app scans your library against predefined **archetypes** (Portraits, Night, Landscapes, Documents, Rainy, Food, Pets).
+    *   It uses **Dynamic Thresholding**: instead of a fixed score, it samples your folder's semantic range to find the top-20% most relevant matches for each category.
+    *   Albums only appear if they contain more than 5 high-quality matches, ensuring your sidebar stays clean and relevant.
 
 ---
 
