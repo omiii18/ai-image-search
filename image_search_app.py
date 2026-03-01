@@ -27,6 +27,7 @@ import pillow_heif  # HEIC support
 import sqlite3
 import platform
 import multiprocessing
+import cv2
 
 def resource_path(relative_path):
     """Get absolute path for resources."""
@@ -55,6 +56,12 @@ DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is
 MODEL_NAME = "ViT-B/32"  # Speed optimized
 K_MATCHES = 12 # Number of results to display
 SETTINGS_FILE = "settings.json"
+
+AUTO_ALBUMS = {
+    'Rainy': 'photo in the rain',
+    'Night': 'dark night photography',
+    'Portraits': 'a close up portrait of a person'
+}
 
 # Import index builder
 try:
@@ -105,7 +112,8 @@ class ImageSearchApp:
         self.preprocess = None
         self.faiss_index = None
         self.filenames = []
-        
+        self.auto_album_data = {}
+
         # --- GUI State ---
         self.status_text = tk.StringVar(value="Initializing...")
         self.query_image_path = tk.StringVar(value="")
@@ -273,6 +281,10 @@ class ImageSearchApp:
         self._load_search_index()
         self.status_text.set(f"Ready. {self.faiss_index.ntotal if self.faiss_index else 0} images searchable.")
         
+        # 5. Generate Auto Albums in background
+        if self.faiss_index and getattr(self.faiss_index, "ntotal", 0) > 0:
+            threading.Thread(target=self._generate_auto_albums, daemon=True).start()
+        
     def _load_search_index(self):
         """Load FAISS index."""
         try:
@@ -301,6 +313,91 @@ class ImageSearchApp:
             print(f"Error loading index: {e}")
             self.faiss_index = None
             self.filenames = []
+
+    def _generate_auto_albums(self):
+        """Generate smart virtual albums in the background."""
+        if not self.faiss_index or not self.model or getattr(self, "filenames", None) is None: return
+        
+        self.auto_album_data = {}
+        
+        for album_name, anchor_text in AUTO_ALBUMS.items():
+            # Get textual embedding
+            text_tokens = clip.tokenize([anchor_text]).to(DEVICE)
+            with torch.no_grad():
+                query_vector = self.model.encode_text(text_tokens)
+            query_vector = query_vector / query_vector.norm(dim=-1, keepdim=True)
+            query_vector_np = query_vector.cpu().numpy().astype('float32')
+            
+            # Query top 20 matches from FAISS index
+            k_search = 20
+            if self.faiss_index.ntotal < k_search:
+                k_search = self.faiss_index.ntotal
+                if k_search == 0: continue
+                
+            D, I = self.faiss_index.search(query_vector_np, k=k_search)
+            
+            valid_results = {}
+            for i in range(len(I[0])):
+                idx = I[0][i]
+                if idx < 0 or idx >= len(self.filenames): continue
+                score = float(D[0][i])
+                match_percentage = (1 - (score / 2.5)) * 100
+                if match_percentage < 10.0: continue
+                
+                filename = self.filenames[idx]
+                path = os.path.join(self.image_folder_path, filename)
+                
+                # Technical filters using OpenCV
+                try:
+                    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                    if img is not None:
+                        # 1. Low light check
+                        if np.mean(img) < 20: continue
+                        # 2. Motion Blur check (Laplacian variance)
+                        variance = cv2.Laplacian(img, cv2.CV_64F).var()
+                        if variance < 80: continue # Reject blurry images
+                except Exception:
+                    pass
+                
+                valid_results[filename] = match_percentage
+                
+            if valid_results:
+                sorted_results = sorted(valid_results.items(), key=lambda x: x[1], reverse=True)[:K_MATCHES]
+                self.auto_album_data[album_name] = sorted_results
+                
+        # Update UI asynchronously
+        self.root.after(0, self._update_auto_albums_ui)
+
+    def _update_auto_albums_ui(self):
+        # Clear existing buttons
+        for widget in self.auto_albums_frame.winfo_children():
+            widget.destroy()
+            
+        if not hasattr(self, 'auto_album_data') or not self.auto_album_data:
+            return
+            
+        # Add Title
+        ctk.CTkLabel(self.auto_albums_frame, text="Auto-Albums", font=("Inter", 11, "bold"), text_color=self.colors["subtext"]).pack(anchor="w", pady=(0, 5))
+            
+        for album_name in self.auto_album_data.keys():
+            album_btn = ctk.CTkButton(
+                self.auto_albums_frame, 
+                text=f"  {album_name}", 
+                image=None,
+                anchor="w", font=("Inter", 12),
+                height=32, corner_radius=6,
+                fg_color="transparent", text_color=self.colors["text"],
+                hover_color=self.colors["active_bg"],
+                command=lambda name=album_name: self._on_album_click(name)
+            )
+            album_btn.pack(fill="x", pady=2)
+
+    def _on_album_click(self, album_name):
+        if not self.faiss_index or album_name not in self.auto_album_data: return
+        self.results_title.configure(text=f"Auto-Album: {album_name}")
+        self.results_subtitle.configure(text=f"Curated matches based on contextual and technical analysis.")
+        self.scroll_frame._parent_canvas.yview_moveto(0) # Reset scroll
+        self.populate_grid(self.auto_album_data[album_name], None)
 
     # --- Dashboard UI ---
 
@@ -433,6 +530,10 @@ class ImageSearchApp:
         )
         self.folders_dropdown.set("Recent Folders")
         self.folders_dropdown.pack(fill="x", padx=15, pady=5)
+
+        # Auto-Albums Section
+        self.auto_albums_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.auto_albums_frame.pack(fill="x", padx=15, pady=(15, 5))
 
         # Sidebar Bottom: Indexing Status
         status_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")

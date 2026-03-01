@@ -10,3 +10,4 @@ pytesseract # Python-tesseract is an optical character recognition (OCR) tool fo
 tqdm # Progress bar library for Python
 tkinterdnd2 # Drag and drop support for Tkinter
 customtkinter # Modern UI library for Tkinter
+opencv-python # Computer vision for motion blur and histogram analysis
