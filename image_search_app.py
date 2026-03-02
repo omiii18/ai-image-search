@@ -758,37 +758,49 @@ Subject:'''
         return context_lines
 
     def _process_assistant_query(self, query):
-        if not self.faiss_index or not self.model:
-            self.root.after(0, lambda: self._append_to_chat("Assistant: Please configure and index a photo folder first.\n\n"))
-            return
+        try:
+            if not self.faiss_index or not self.model:
+                self.root.after(0, lambda: self._append_to_chat("Assistant: Please configure and index a photo folder first.\n\n"))
+                return
+                
+            self.root.after(0, lambda: self._append_to_chat("Assistant: Understanding your question...\n"))
             
-        self.root.after(0, lambda: self._append_to_chat("Assistant: Understanding your question...\n"))
-        
-        # 1. Use local LLM to extract the core visual subject
-        subject = self._extract_subject_from_query(query)
-        
-        # 2. Build RAG Context using FAISS & EXIF Date Extraction
-        context_lines = self._build_rag_context(subject)
+            # --- LLM Connection Health Check ---
+            import urllib.request
+            try:
+                # A quick ping to Ollama's default port to verify it's active
+                req = urllib.request.Request("http://127.0.0.1:11434/")
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    pass
+            except Exception:
+                self.root.after(0, lambda: self._append_to_chat("Error: Local LLM server is not running or unreachable.\n\n"))
+                return
             
-        if not context_lines:
-            self.root.after(0, lambda: self._append_to_chat("Assistant: I couldn't find a memory of that.\n\n"))
-            return
+            # 1. Use local LLM to extract the core visual subject
+            subject = self._extract_subject_from_query(query)
             
-        context_text = "\n".join(context_lines)
-        
-        # 3. Construct System Prompt
-        system_prompt = f"""System: You are a private Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. If no photos match, say you couldn't find a memory of that.
+            self.root.after(0, lambda: self._append_to_chat(f"Assistant: Endcoding and building context for '{subject}'...\n"))
+            
+            # 2. Build RAG Context using FAISS & EXIF Date Extraction
+            context_lines = self._build_rag_context(subject)
+                
+            if not context_lines:
+                self.root.after(0, lambda: self._append_to_chat("Assistant: I couldn't find a memory of that.\n\n"))
+                return
+                
+            context_text = "\n".join(context_lines)
+            
+            # 3. Construct System Prompt
+            system_prompt = f"""System: You are a private Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. If no photos match, say you couldn't find a memory of that.
 
 Context (List of relevant photos):
 {context_text}"""
-        
-        full_prompt = f"{system_prompt}\n\nUser Question: {query}\nAnswer:"
+            
+            full_prompt = f"{system_prompt}\n\nUser Question: {query}\nAnswer:"
 
-        self.root.after(0, lambda: self._append_to_chat("Assistant: "))
+            self.root.after(0, lambda: self._append_to_chat("Assistant: "))
 
-        # 4. Generate local response (Streaming)
-        try:
-            import urllib.request
+            # 4. Generate local response (Streaming)
             data = json.dumps({
                 "model": "llama3.2", 
                 "prompt": full_prompt,
@@ -807,8 +819,10 @@ Context (List of relevant photos):
                         if chunk:
                             self.root.after(0, lambda c=chunk: self._append_to_chat(c))
                 self.root.after(0, lambda: self._append_to_chat("\n\n"))
+                
         except Exception as e:
-            self.root.after(0, lambda: self._append_to_chat(f"\n[Error connecting to local LLM: {str(e)}]\n\n"))
+            # Trap silent crashes inside the thread and report them back to GUI
+            self.root.after(0, lambda err=e: self._append_to_chat(f"\nSystem Error: {str(err)}\n\n"))
 
     def _build_header(self, parent):
         header_container = ctk.CTkFrame(parent, fg_color="transparent")
