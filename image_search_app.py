@@ -18,6 +18,7 @@ import tkinter as tk
 from tkinter import messagebox, filedialog
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from PIL import Image, ImageTk, ImageDraw, ImageOps
+from PIL.ExifTags import TAGS
 import customtkinter as ctk
 import json
 import threading
@@ -56,6 +57,32 @@ DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is
 MODEL_NAME = "ViT-B/32"  # Speed optimized
 K_MATCHES = 12 # Number of results to display
 SETTINGS_FILE = "settings.json"
+
+def get_exif_metadata(image_path):
+    """Safely extract basic EXIF data (like Date) for RAG context."""
+    metadata = {}
+    try:
+        img = Image.open(image_path)
+        exif = img.getexif()
+        if exif:
+            for tag_id, value in exif.items():
+                tag_name = TAGS.get(tag_id, tag_id)
+                if tag_name in ['DateTime', 'DateTimeOriginal', 'Make', 'Model']:
+                    metadata[tag_name] = str(value).strip('\x00')
+    except Exception:
+        pass
+        
+    if not metadata:
+        try:
+            mtime = os.path.getmtime(image_path)
+            # Fallback to file modified time
+            import time
+            metadata['FileDate'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
+        except:
+            pass
+            
+    return metadata
+
 
 
 
@@ -541,8 +568,15 @@ class ImageSearchApp:
                                         anchor="w", font=("Inter", 13, "bold"),
                                         height=40, corner_radius=8,
                                         fg_color=self.colors["active_bg"], text_color=self.colors["accent"],
-                                        hover_color=self.colors["active_bg"])
+                                        hover_color=self.colors["active_bg"], command=self._show_photos_view)
         self.photos_btn.pack(fill="x", padx=15, pady=5)
+
+        self.assistant_btn = ctk.CTkButton(self.sidebar, text="  Memory Assistant", image=None,
+                                        anchor="w", font=("Inter", 13, "bold"),
+                                        height=40, corner_radius=8,
+                                        fg_color="transparent", text_color=self.colors["text"],
+                                        hover_color=self.colors["active_bg"], command=self._show_assistant_view)
+        self.assistant_btn.pack(fill="x", padx=15, pady=(0, 5))
 
         recent_folders = self.get_recent_folders()
         dropdown_vals = recent_folders if recent_folders else ["No recent folders"]
@@ -584,15 +618,21 @@ class ImageSearchApp:
         self.progress_bar.pack(fill="x")
         self.progress_bar.set(1.0) # Default to full
 
-        # 1b. Right Content Area
-        self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        self.content_area.pack(side="right", fill="both", expand=True)
+        # 1b. Right Content Area Container
+        self.content_container = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.content_container.pack(side="right", fill="both", expand=True)
 
-        # 2. Top Header (Search & Actions)
-        self._build_header(self.content_area)
+        self.photos_view = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        self.photos_view.pack(fill="both", expand=True)
+
+        self.assistant_view = ctk.CTkFrame(self.content_container, fg_color="transparent")
+        self._build_assistant_ui(self.assistant_view)
+
+        # 2. Top Header (Search & Actions) inside photos_view
+        self._build_header(self.photos_view)
 
         # 3. Main Display Area
-        self.display_container = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.display_container = ctk.CTkFrame(self.photos_view, fg_color="transparent")
         self.display_container.pack(fill="both", expand=True, padx=30, pady=(10, 30))
 
         # Title & Subtitle
@@ -616,6 +656,159 @@ class ImageSearchApp:
                                         text="DeepSearch AI v1.1 | Developed with ❤️ by Omkar Karne", 
                                         font=("Inter", 10), text_color=self.colors["subtext"])
         self.footer_label.pack(side="bottom", pady=(10, 0))
+
+    def _show_photos_view(self):
+        self.assistant_btn.configure(fg_color="transparent", text_color=self.colors["text"])
+        self.photos_btn.configure(fg_color=self.colors["active_bg"], text_color=self.colors["accent"])
+        self.assistant_view.pack_forget()
+        self.photos_view.pack(fill="both", expand=True)
+        
+    def _show_assistant_view(self):
+        self.photos_btn.configure(fg_color="transparent", text_color=self.colors["text"])
+        self.assistant_btn.configure(fg_color=self.colors["active_bg"], text_color=self.colors["accent"])
+        self.photos_view.pack_forget()
+        self.assistant_view.pack(fill="both", expand=True)
+
+    def _build_assistant_ui(self, parent):
+        title = ctk.CTkLabel(parent, text="Memory Assistant", font=("Outfit", 24, "bold"), text_color=self.colors["text"])
+        title.pack(anchor="w", padx=30, pady=(30, 10))
+        
+        desc = ctk.CTkLabel(parent, text="Ask questions about your indexed photos. Powered by local LLM + EXIF data.", font=("Inter", 13), text_color=self.colors["subtext"])
+        desc.pack(anchor="w", padx=30, pady=(0, 20))
+        
+        self.chat_history = ctk.CTkTextbox(parent, font=("Inter", 13), fg_color="#FFFFFF", border_color=self.colors["border"], border_width=1, corner_radius=10, state="disabled")
+        self.chat_history.pack(fill="both", expand=True, padx=30, pady=(0, 15))
+        
+        input_frame = ctk.CTkFrame(parent, fg_color="transparent", height=45)
+        input_frame.pack(fill="x", padx=30, pady=(0, 30))
+        
+        self.chat_input = ctk.CTkEntry(input_frame, placeholder_text="e.g. When did I last go to the beach?", font=("Inter", 14), height=45, corner_radius=10, fg_color="#FFFFFF", border_color=self.colors["border"], text_color=self.colors["text"])
+        self.chat_input.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.chat_input.bind("<Return>", lambda e: self._handle_chat_message())
+        
+        send_btn = ctk.CTkButton(input_frame, text="Send", width=80, fg_color=self.colors["text"], text_color="#FFFFFF", hover_color="#374151", height=45, corner_radius=10, font=("Inter", 13, "bold"), command=self._handle_chat_message)
+        send_btn.pack(side="left")
+        
+    def _handle_chat_message(self):
+        msg = self.chat_input.get().strip()
+        if not msg: return
+        
+        self.chat_input.delete(0, tk.END)
+        self._append_to_chat(f"You: {msg}\n")
+        
+        threading.Thread(target=self._process_assistant_query, args=(msg,), daemon=True).start()
+        
+    def _append_to_chat(self, text):
+        self.chat_history.configure(state="normal")
+        self.chat_history.insert(tk.END, text)
+        self.chat_history.see(tk.END)
+        self.chat_history.configure(state="disabled")
+
+    def _extract_subject_from_query(self, query):
+        import urllib.request
+        prompt = f'''Extract the core visual subject to search for from this question. Return ONLY the subject, nothing else.
+Question: "When was my last trip to the beach?"
+Subject: beach
+Question: "Do I have photos of a dog?"
+Subject: dog
+Question: "{query}"
+Subject:'''
+        try:
+            data = json.dumps({
+                "model": "llama3.2",
+                "prompt": prompt,
+                "stream": False,
+                "options": { "temperature": 0.0 }
+            }).encode('utf-8')
+            req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=data, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                subject = result.get('response', '').strip()
+                if subject.lower().startswith('subject:'):
+                    subject = subject[8:].strip()
+                return subject or query
+        except Exception:
+            return query
+
+    def _build_rag_context(self, subject):
+        """Takes the top 5 results from FAISS and extracts filename and Date Taken metadata."""
+        text_tokens = clip.tokenize([subject]).to(DEVICE)
+        with torch.no_grad():
+            query_vector = self.model.encode_text(text_tokens)
+        query_vector /= query_vector.norm(dim=-1, keepdim=True)
+        query_vector_np = query_vector.cpu().numpy().astype('float32')
+        
+        D, I = self.faiss_index.search(query_vector_np, k=5)
+        
+        context_lines = []
+        for i in range(len(I[0])):
+            idx = I[0][i]
+            if idx < 0 or idx >= len(self.filenames): continue
+            score = float(D[0][i])
+            match_pct = max(0, (1 - (score / 2.5)) * 100)
+            
+            if match_pct < 5.0: continue
+            
+            filename = self.filenames[idx]
+            filepath = os.path.join(self.image_folder_path, filename)
+            meta = get_exif_metadata(filepath)
+            date_taken = meta.get('DateTimeOriginal') or meta.get('DateTime') or meta.get('FileDate') or "Unknown Date"
+            context_lines.append(f"- Photo: {filename}, Date: {date_taken}")
+            
+        return context_lines
+
+    def _process_assistant_query(self, query):
+        if not self.faiss_index or not self.model:
+            self.root.after(0, lambda: self._append_to_chat("Assistant: Please configure and index a photo folder first.\n\n"))
+            return
+            
+        self.root.after(0, lambda: self._append_to_chat("Assistant: Understanding your question...\n"))
+        
+        # 1. Use local LLM to extract the core visual subject
+        subject = self._extract_subject_from_query(query)
+        
+        # 2. Build RAG Context using FAISS & EXIF Date Extraction
+        context_lines = self._build_rag_context(subject)
+            
+        if not context_lines:
+            self.root.after(0, lambda: self._append_to_chat("Assistant: I couldn't find a memory of that.\n\n"))
+            return
+            
+        context_text = "\n".join(context_lines)
+        
+        # 3. Construct System Prompt
+        system_prompt = f"""System: You are a private Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. If no photos match, say you couldn't find a memory of that.
+
+Context (List of relevant photos):
+{context_text}"""
+        
+        full_prompt = f"{system_prompt}\n\nUser Question: {query}\nAnswer:"
+
+        self.root.after(0, lambda: self._append_to_chat("Assistant: "))
+
+        # 4. Generate local response (Streaming)
+        try:
+            import urllib.request
+            data = json.dumps({
+                "model": "llama3.2", 
+                "prompt": full_prompt,
+                "stream": True,
+                "options": {
+                    "temperature": 0.3
+                }
+            }).encode('utf-8')
+            
+            req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=data, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=120) as response:
+                for line in response:
+                    if line:
+                        result = json.loads(line.decode('utf-8'))
+                        chunk = result.get('response', '')
+                        if chunk:
+                            self.root.after(0, lambda c=chunk: self._append_to_chat(c))
+                self.root.after(0, lambda: self._append_to_chat("\n\n"))
+        except Exception as e:
+            self.root.after(0, lambda: self._append_to_chat(f"\n[Error connecting to local LLM: {str(e)}]\n\n"))
 
     def _build_header(self, parent):
         header_container = ctk.CTkFrame(parent, fg_color="transparent")

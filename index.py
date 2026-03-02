@@ -9,16 +9,10 @@ import faiss
 import pickle
 import json
 from collections import OrderedDict
-import ssl 
 import sys
 import sqlite3
 import pytesseract
 from tqdm import tqdm  # Progress UI
-
-# --- SSL Fix ---
-ssl._create_default_https_context = ssl._create_unverified_context
-
-# --- HEIC Support ---
 try:
     import pillow_heif
     pillow_heif.register_heif_opener()
