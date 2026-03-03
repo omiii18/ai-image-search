@@ -810,10 +810,17 @@ Search Phrase:'''
             # 1. Use local LLM to extract the core visual subject & query expansion
             subject = self._extract_subject_from_query(query)
             
-            self.root.after(0, lambda: self._append_to_chat(f"Assistant: Searching memories for '{subject}'...\n"))
+            # Intent refinement and fast expansion
+            try:
+                expanded_subject = self.expand_query(subject)
+                search_subject = expanded_subject if expanded_subject else subject
+            except Exception:
+                search_subject = subject
+
+            self.root.after(0, lambda: self._append_to_chat(f"Assistant: Searching memories for '{search_subject}'...\n"))
             
             # 2. Build RAG Context using FAISS & EXIF Date Extraction
-            context_lines = self._build_rag_context(subject)
+            context_lines = self._build_rag_context(search_subject)
             context_text = "\n".join(context_lines) if context_lines else "No direct photo matches found."
             
             # 3. Construct System Prompt with Memory
@@ -1180,6 +1187,42 @@ Context (List of relevant photos):
     def reindex_thread(self):
         threading.Thread(target=self._check_and_index_photos, daemon=True).start()
 
+    def expand_query(self, user_query):
+        """
+        Refines raw natural language into a descriptive prompt for CLIP.
+        Uses embedding strategies to improve match accuracy.
+        """
+        if not user_query:
+            return ""
+        
+        query = user_query.lower().strip()
+        
+        # 1. Subject-Specific Expansion Rules
+        expansions = {
+            "food": "a high-quality photo of a meal, plate of food, or dining experience",
+            "car": "a vehicle, automobile, or car parked or driving",
+            "document": "a scanned paper, receipt, document with text, or official form",
+            "beach": "a coastal scene with sand, ocean waves, and blue sky",
+            "night": "a dark scene taken at night with artificial lights or moonlight",
+            "nature": "a beautiful landscape, forest, mountains, or outdoor nature scene",
+            "people": "a photo of a person, group of friends, or family",
+            "work": "an office, desk, computer screen, or professional work environment",
+            "travel": "a vacation photo, tourist landmark, travel destination, or sightseeing",
+            "dog": "a cute dog, puppy, or canine pet",
+            "cat": "a cute cat, kitten, or feline pet",
+            "bike": "a bicycle, motorcycle, or bike on a road or path"
+        }
+        
+        # 2. Check if a single word match exists
+        if query in expansions:
+            return expansions[query]
+        
+        # 3. Handle short phrases by adding "a clear photo of..." (CLIP's favorite prefix)
+        if len(query.split()) <= 2:
+            return f"a clear photo of {query}"
+            
+        return query # Return as-is if it's already a descriptive sentence
+
     def _run_search(self):
         text_query = self.search_text_var.get()
         
@@ -1195,7 +1238,13 @@ Context (List of relevant photos):
         # Extract query vector exclusively for TEXT in this function
         query_vector = None
         if text_query:
-            text_token = clip.tokenize([text_query]).to(DEVICE)
+            try:
+                expanded_query = self.expand_query(text_query)
+                search_term = expanded_query if expanded_query else text_query
+            except Exception:
+                search_term = text_query
+
+            text_token = clip.tokenize([search_term]).to(DEVICE)
             with torch.no_grad():
                 query_vector = self.model.encode_text(text_token)
 
