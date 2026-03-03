@@ -789,13 +789,16 @@ Search Phrase:'''
             score = float(D[0][i])
             match_pct = max(0, (1 - (score / 2.5)) * 100)
             
+            # Semantic Debugging
+            print(f"[DEBUG] Attribute Verification for '{subject}' -> File: {self.filenames[idx]} | Confidence: {match_pct:.1f}%")
+            
             if match_pct < 5.0: continue
             
             filename = self.filenames[idx]
             filepath = os.path.join(self.image_folder_path, filename)
             meta = get_exif_metadata(filepath)
             date_taken = meta.get('DateTimeOriginal') or meta.get('DateTime') or meta.get('FileDate') or "Unknown Date"
-            context_lines.append(f"- Photo: {filename}, Date: {date_taken}")
+            context_lines.append(f"- Photo: {filename}, Date: {date_taken}, Match: {match_pct:.1f}%")
             
         return context_lines
 
@@ -860,6 +863,7 @@ Search Phrase:'''
             # 3. Construct System Prompt with Memory
             history_text = "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-4:]])
             system_prompt = f"""System: You are a private Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. If no photos match, say you couldn't find a memory of that. Keep your answer conversational.
+If the user mentions a color or specific attribute, look specifically at the similarity scores for that attribute. If the match is over 40%, confirm it confidently as a visual match rather than guessing.
 
 Recent Chat History:
 {history_text}
@@ -1261,9 +1265,15 @@ Context (List of relevant photos):
         # 2. Check if a single word match exists
         if query in expansions:
             return expansions[query]
+            
+        # 3. Attribute verification (Color + Object)
+        colors = ["red", "blue", "green", "yellow", "black", "white", "pink", "purple", "orange"]
+        words = query.split()
+        if len(words) == 2 and words[0] in colors:
+            return f"A person wearing a vibrant {words[0]} {words[1]}"
         
-        # 3. Handle short phrases by adding "a clear photo of..." (CLIP's favorite prefix)
-        if len(query.split()) <= 2:
+        # 4. Handle short phrases by adding "a clear photo of..." (CLIP's favorite prefix)
+        if len(words) <= 2:
             return f"a clear photo of {query}"
             
         return query # Return as-is if it's already a descriptive sentence
