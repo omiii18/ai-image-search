@@ -679,6 +679,8 @@ class ImageSearchApp:
         # Chat History Scrollable Frame
         self.chat_scroll_frame = ctk.CTkScrollableFrame(parent, fg_color="transparent", scrollbar_button_color=self.colors["border"])
         self.chat_scroll_frame.pack(fill="both", expand=True, padx=20, pady=(0, 5))
+        self._bind_chat_scroll(self.chat_scroll_frame._parent_canvas)
+        self._bind_chat_scroll(self.chat_scroll_frame._parent_frame)
         
         # Typing indicator (Hidden by default)
         self.typing_indicator = ctk.CTkLabel(parent, text="", font=("Inter", 12, "italic"), text_color=self.colors["subtext"])
@@ -710,19 +712,41 @@ class ImageSearchApp:
         msg_label = ctk.CTkLabel(inner_frame, text=text, font=("Inter", 13), text_color=text_color, justify="left", wraplength=450)
         msg_label.pack(padx=15, pady=10)
         
-        self.root.after(10, self._scroll_chat_to_bottom)
+        self._bind_chat_scroll(bubble_frame)
+        self._bind_chat_scroll(inner_frame)
+        self._bind_chat_scroll(msg_label)
+        
+        self.root.after(50, lambda: self._scroll_chat_to_bottom())
         return msg_label, inner_frame
 
+    def _on_chat_mousewheel(self, event):
+        """Universal scroll handler — works on Mac (delta ±1) and Windows (delta ±120)."""
+        try:
+            if sys.platform == "darwin":
+                scroll_units = int(-1 * event.delta)
+            else:
+                scroll_units = int(-1 * (event.delta / 120))
+            self.chat_scroll_frame._parent_canvas.yview_scroll(scroll_units, "units")
+        except Exception:
+            pass
+
+    def _bind_chat_scroll(self, widget):
+        """Recursively bind mouse wheel to a widget AND every one of its children."""
+        if sys.platform.startswith("win") or sys.platform == "darwin":
+            widget.bind("<MouseWheel>", self._on_chat_mousewheel, add="+")
+        else:
+            widget.bind("<Button-4>", self._on_chat_mousewheel, add="+")
+            widget.bind("<Button-5>", self._on_chat_mousewheel, add="+")
+        # Walk ALL internal children (including Tkinter internals inside CTk widgets)
+        for child in widget.winfo_children():
+            self._bind_chat_scroll(child)
+
     def _scroll_chat_to_bottom(self):
-        def _do_scroll():
-            try:
-                self.chat_scroll_frame.update_idletasks()
-                self.chat_scroll_frame._parent_canvas.yview_moveto(1.0)
-            except Exception:
-                pass
-        # Call immediately and after a short delay to account for rendering time
-        _do_scroll()
-        self.root.after(50, _do_scroll)
+        try:
+            self.chat_scroll_frame.update_idletasks()
+            self.chat_scroll_frame._parent_canvas.yview_moveto(1.0)
+        except Exception:
+            pass
             
     def _show_typing(self, message="Thinking..."):
         self.typing_indicator.configure(text=message)
@@ -746,10 +770,11 @@ class ImageSearchApp:
         
         history_text = ""
         if hasattr(self, 'chat_memory') and self.chat_memory:
-            history_text = "Chat History:\n" + "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-4:]])
+            history_text = "Chat History:\n" + "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-2:]])
             
         prompt = f'''Analyze the user's latest question to find the core visual subject for an image search.
 If the question refers to a previous topic (e.g., "where was that?"), use the chat history to resolve what "that" is.
+Ignore generic conversational words like "where", "hi", "show me", or "what". Focus purely on the nouns and target objects.
 If the subject is a single word like "Food", "Dog", or "Car", expand it into a descriptive embedding prompt (e.g., "A high-quality photo of a meal or food item").
 Return ONLY the final search phrase, nothing else.
 
@@ -800,9 +825,12 @@ Search Phrase:'''
             
             filename = self.filenames[idx]
             filepath = os.path.join(self.image_folder_path, filename)
+            folder_name = os.path.basename(self.image_folder_path)
             meta = get_exif_metadata(filepath)
             date_taken = meta.get('DateTimeOriginal') or meta.get('DateTime') or meta.get('FileDate') or "Unknown Date"
-            context_lines.append(f"- Photo: {filename}, Date: {date_taken}, Match: {match_pct:.1f}%")
+            context_string = f"- Photo: {filename}, Folder: {folder_name}, Path: {filepath}, Date: {date_taken}, Match: {match_pct:.1f}%"
+            context_lines.append(context_string)
+            print(f"[RAG CONTEXT SENT TO LLM]: {context_string}")
             
         return context_lines
 
@@ -864,18 +892,25 @@ Search Phrase:'''
             context_lines = self._build_rag_context(search_subject)
             context_text = "\n".join(context_lines) if context_lines else "No direct photo matches found."
             
-            # 3. Construct System Prompt with Memory
-            history_text = "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-4:]])
-            system_prompt = f"""System: You are a helpful Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. 
-CLIP similarity scores between 35% and 45% are highly relevant for specific patterns like 'lineups' or 'rows'. Do not apologize or say you couldn't find it. Instead, say: 'I found a potential match with [X]% confidence that looks like a lineup. Take a look!' Trust your "eyes" (the vector similarity scores) more than your uncertainty.
+            # 3. Construct System Prompt — separate history from fresh results
+            history_text = "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-2:]])
+            system_prompt = f"""System: You are a helpful, conversational Memory Assistant. Speak casually like a friend.
 
-Recent Chat History:
+Here is the brief chat history for context:
 {history_text}
 
-Context (List of relevant photos):
-{context_text}"""
+AND here are the NEW search results for the user's current question:
+{context_text}
+
+CRITICAL RULES:
+1. Always base your answer on the NEW search results above. If the user asks about a new topic (like 'beach' or 'cars'), forget the old photos and describe the new ones naturally.
+2. Only use the chat history if the user says 'yes', 'where is that', 'open it', or is clearly referring to a previous image.
+3. ALWAYS mention the exact filename (e.g., IMG_0897.HEIC) in your answer so the app can create a button.
+4. If asked 'where,' use the folder name or date from the search results to answer.
+5. Never mention similarity scores or percentages. Describe photos like a human friend would."""
             
             full_prompt = f"{system_prompt}\n\nUser Question: {query}\nAnswer:"
+            print(f"\n[DEBUG] LLM PROMPT:\n{full_prompt}\n")
 
             def prep_bubble():
                 self._hide_typing()
@@ -915,24 +950,32 @@ Context (List of relevant photos):
             self.chat_memory.append(("User", query))
             self.chat_memory.append(("Assistant", full_answer))
             
-            # --- "Jump to Image" dynamic button generation ---
+            # --- "Open in Folder" dynamic button generation ---
             import re
-            found_files = re.findall(r'[\w\-\.]+\.(?:heic|jpg|jpeg|png|webp)', full_answer, re.IGNORECASE)
+            # Strict regex: captures filenames like IMG_0897.HEIC, 000000009914.jpg, IMG_0924 2.heic
+            found_files = re.findall(r'(?<![a-zA-Z])([A-Za-z0-9_\-]+(?:\s\d+)?\.(?:heic|jpg|jpeg|png|webp))', full_answer, re.IGNORECASE)
+            found_files = [f.strip().rstrip('.,;:)]}') for f in found_files]
+            
+            print(f"[DEBUG] Regex found filenames in response: {found_files}")
+            print(f"[DEBUG] Indexed filenames sample: {self.filenames[:5]}")
+            
             valid_files = [f for f in set(found_files) if f in self.filenames]
+            print(f"[DEBUG] Valid files after index check: {valid_files}")
             
             if valid_files:
                 def append_jump_buttons(files, frame):
                     for f in files:
                         f_path = os.path.join(self.image_folder_path, f)
                         btn = ctk.CTkButton(
-                            frame, text=f"📂 Open in Folder ({f})",
+                            frame, text=f"📁 Open in Folder ({f})",
                             command=lambda p=f_path: self.reveal_file_in_os(p),
                             height=28, corner_radius=8, font=("Inter", 11, "bold"),
                             fg_color=self.colors["accent"], text_color="#FFFFFF", hover_color="#584ab8"
                         )
                         btn.pack(padx=15, pady=(0, 10), anchor="w")
-                    self._scroll_chat_to_bottom()
-                self.root.after(0, lambda v=valid_files[:3], f=self._current_bubble_frame: append_jump_buttons(v, f))
+                        self._bind_chat_scroll(btn)
+                    self.root.after(50, self._scroll_chat_to_bottom)
+                self.root.after(100, lambda v=valid_files[:3], f=self._current_bubble_frame: append_jump_buttons(v, f))
                 
         except Exception as e:
             # Trap silent crashes inside the thread and report them back to GUI
