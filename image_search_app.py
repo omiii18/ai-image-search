@@ -714,11 +714,15 @@ class ImageSearchApp:
         return msg_label, inner_frame
 
     def _scroll_chat_to_bottom(self):
-        self.chat_scroll_frame.update_idletasks()
-        try:
-            self.chat_scroll_frame._parent_canvas.yview_moveto(1.0)
-        except Exception:
-            pass
+        def _do_scroll():
+            try:
+                self.chat_scroll_frame.update_idletasks()
+                self.chat_scroll_frame._parent_canvas.yview_moveto(1.0)
+            except Exception:
+                pass
+        # Call immediately and after a short delay to account for rendering time
+        _do_scroll()
+        self.root.after(50, _do_scroll)
             
     def _show_typing(self, message="Thinking..."):
         self.typing_indicator.configure(text=message)
@@ -862,8 +866,8 @@ Search Phrase:'''
             
             # 3. Construct System Prompt with Memory
             history_text = "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-4:]])
-            system_prompt = f"""System: You are a private Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. If no photos match, say you couldn't find a memory of that. Keep your answer conversational.
-If the user mentions a color or specific attribute, look specifically at the similarity scores for that attribute. If the match is over 40%, confirm it confidently as a visual match rather than guessing.
+            system_prompt = f"""System: You are a helpful Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. 
+CLIP similarity scores between 35% and 45% are highly relevant for specific patterns like 'lineups' or 'rows'. Do not apologize or say you couldn't find it. Instead, say: 'I found a potential match with [X]% confidence that looks like a lineup. Take a look!' Trust your "eyes" (the vector similarity scores) more than your uncertainty.
 
 Recent Chat History:
 {history_text}
@@ -921,7 +925,7 @@ Context (List of relevant photos):
                     for f in files:
                         f_path = os.path.join(self.image_folder_path, f)
                         btn = ctk.CTkButton(
-                            frame, text=f"📂 View Match ({f})",
+                            frame, text=f"📂 Open in Folder ({f})",
                             command=lambda p=f_path: self.reveal_file_in_os(p),
                             height=28, corner_radius=8, font=("Inter", 11, "bold"),
                             fg_color=self.colors["accent"], text_color="#FFFFFF", hover_color="#584ab8"
@@ -1290,6 +1294,14 @@ Context (List of relevant photos):
         words = query.split()
         if len(words) == 2 and words[0] in colors:
             return f"A person wearing a vibrant {words[0]} {words[1]}"
+            
+        # 4. Positional Pattern Expansion
+        positional = ["lineup", "row", "side-by-side", "arranged", "series"]
+        if any(p in query for p in positional):
+            # Extract the actual object they are looking for (e.g., "cars in a row" -> "cars")
+            obj = query.replace("lineup", "").replace("row", "").replace("in a", "").replace("of", "").strip()
+            if not obj: obj = "objects"
+            return f"A high-quality photo of multiple {obj} parked or arranged side by side in a row or lineup."
         
         # 4. Handle short phrases by adding "a clear photo of..." (CLIP's favorite prefix)
         if len(words) <= 2:
@@ -1404,6 +1416,47 @@ Context (List of relevant photos):
     def populate_grid(self, results_list, query_image_path=None):
         """Legacy method redirected to new animator."""
         self._display_results(results_list, query_image_path)
+
+    def show_image_in_grid(self, filename):
+        """Highlights a specific image in the grid and switches to the gallery tab."""
+        self._show_photos_view()
+        
+        # Look through all currently rendered cards in the scroll_frame
+        found = False
+        widgets_to_search = self.scroll_frame.winfo_children()
+        
+        for card in widgets_to_search:
+            # We hid the path inside the bind closure earlier, but we can verify via the title label text
+            # A more robust way is traversing children and checking the label text.
+            for child in card.winfo_children():
+                if isinstance(child, ctk.CTkLabel) and child.cget("text").startswith(filename[:18]):
+                    found = True
+                    # Flash red border
+                    original_border = card.cget("border_color")
+                    original_width = card.cget("border_width")
+                    
+                    def reset_border():
+                        try:
+                            card.configure(border_color=original_border, border_width=original_width)
+                        except: pass
+
+                    card.configure(border_color=self.colors["accent"], border_width=3)
+                    self.root.after(3000, reset_border)
+
+                    # Scroll to this card safely by calculating its Y pos vs total height
+                    self.scroll_frame.update_idletasks()
+                    card_y = card.winfo_y()
+                    total_h = self.scroll_frame.winfo_reqheight()
+                    if total_h > 0:
+                        fraction = card_y / total_h
+                        self.scroll_canvas.yview_moveto(max(0, fraction - 0.1)) # Offset slightly to see the top
+                    break
+        
+        if not found:
+            self.status_text.set(f"Wait... searching for {filename} to highlight it.")
+            # If not in the current view, we can force a generic search that includes it.
+            self.search_text_var.set(filename.split('.')[0])
+            self._run_search()
 
     def _render_card(self, path, title, subtitle, row, col, highlight=False):
         """Create a modernized white card."""
