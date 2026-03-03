@@ -3,7 +3,7 @@
 __pycache__/
 
 # Large AI/FAISS output files
-embeddings/
+embeddings*/
 *.pkl
 *.index
 

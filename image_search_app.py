@@ -706,13 +706,20 @@ class ImageSearchApp:
 
     def _extract_subject_from_query(self, query):
         import urllib.request
-        prompt = f'''Extract the core visual subject to search for from this question. Return ONLY the subject, nothing else.
-Question: "When was my last trip to the beach?"
-Subject: beach
-Question: "Do I have photos of a dog?"
-Subject: dog
-Question: "{query}"
-Subject:'''
+        
+        history_text = ""
+        if hasattr(self, 'chat_memory') and self.chat_memory:
+            history_text = "Chat History:\n" + "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-4:]])
+            
+        prompt = f'''Analyze the user's latest question to find the core visual subject for an image search.
+If the question refers to a previous topic (e.g., "where was that?"), use the chat history to resolve what "that" is.
+If the subject is a single word like "Food", "Dog", or "Car", expand it into a descriptive embedding prompt (e.g., "A high-quality photo of a meal or food item").
+Return ONLY the final search phrase, nothing else.
+
+{history_text}
+
+Latest Question: "{query}"
+Search Phrase:'''
         try:
             data = json.dumps({
                 "model": "llama3.2",
@@ -724,7 +731,9 @@ Subject:'''
             with urllib.request.urlopen(req, timeout=5) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 subject = result.get('response', '').strip()
-                if subject.lower().startswith('subject:'):
+                if subject.lower().startswith('search phrase:'):
+                    subject = subject[14:].strip()
+                elif subject.lower().startswith('subject:'):
                     subject = subject[8:].strip()
                 return subject or query
         except Exception:
@@ -759,10 +768,32 @@ Subject:'''
 
     def _process_assistant_query(self, query):
         try:
+            if not getattr(self, 'chat_memory', None):
+                self.chat_memory = []
+
             if not self.faiss_index or not self.model:
                 self.root.after(0, lambda: self._append_to_chat("Assistant: Please configure and index a photo folder first.\n\n"))
                 return
                 
+            # --- Intent Classifier (Logic Gate) ---
+            query_lower = query.strip().lower().replace("?", "").replace("!", "")
+            social_greetings = {"hello", "how are you", "hi", "hey", "greetings", "what's up", "who are you"}
+            
+            # Fast logic gate without LLM overhead
+            is_social = query_lower in social_greetings
+            
+            # If input contains search subjects, overrule social logic
+            search_keywords = ["when", "where", "show me", "what", "find", "search", "who"]
+            if any(k in query_lower for k in search_keywords):
+                is_social = False
+                
+            if is_social:
+                ans = "Hello! I am your DeepSearch AI Memory Assistant. How can I help you find or remember your photos today?"
+                self.root.after(0, lambda: self._append_to_chat(f"Assistant: {ans}\n\n"))
+                self.chat_memory.append(("User", query))
+                self.chat_memory.append(("Assistant", ans))
+                return
+
             self.root.after(0, lambda: self._append_to_chat("Assistant: Understanding your question...\n"))
             
             # --- LLM Connection Health Check ---
@@ -776,22 +807,21 @@ Subject:'''
                 self.root.after(0, lambda: self._append_to_chat("Error: Local LLM server is not running or unreachable.\n\n"))
                 return
             
-            # 1. Use local LLM to extract the core visual subject
+            # 1. Use local LLM to extract the core visual subject & query expansion
             subject = self._extract_subject_from_query(query)
             
-            self.root.after(0, lambda: self._append_to_chat(f"Assistant: Endcoding and building context for '{subject}'...\n"))
+            self.root.after(0, lambda: self._append_to_chat(f"Assistant: Searching memories for '{subject}'...\n"))
             
             # 2. Build RAG Context using FAISS & EXIF Date Extraction
             context_lines = self._build_rag_context(subject)
-                
-            if not context_lines:
-                self.root.after(0, lambda: self._append_to_chat("Assistant: I couldn't find a memory of that.\n\n"))
-                return
-                
-            context_text = "\n".join(context_lines)
+            context_text = "\n".join(context_lines) if context_lines else "No direct photo matches found."
             
-            # 3. Construct System Prompt
-            system_prompt = f"""System: You are a private Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. If no photos match, say you couldn't find a memory of that.
+            # 3. Construct System Prompt with Memory
+            history_text = "\n".join([f"{role}: {msg}" for role, msg in self.chat_memory[-4:]])
+            system_prompt = f"""System: You are a private Memory Assistant. Use the provided list of photos and their dates to answer the user's question accurately. If no photos match, say you couldn't find a memory of that. Keep your answer conversational.
+
+Recent Chat History:
+{history_text}
 
 Context (List of relevant photos):
 {context_text}"""
@@ -811,14 +841,20 @@ Context (List of relevant photos):
             }).encode('utf-8')
             
             req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=data, headers={'Content-Type': 'application/json'})
+            full_answer = ""
             with urllib.request.urlopen(req, timeout=120) as response:
                 for line in response:
                     if line:
                         result = json.loads(line.decode('utf-8'))
                         chunk = result.get('response', '')
                         if chunk:
+                            full_answer += chunk
                             self.root.after(0, lambda c=chunk: self._append_to_chat(c))
                 self.root.after(0, lambda: self._append_to_chat("\n\n"))
+                
+            # Save to memory
+            self.chat_memory.append(("User", query))
+            self.chat_memory.append(("Assistant", full_answer))
                 
         except Exception as e:
             # Trap silent crashes inside the thread and report them back to GUI
