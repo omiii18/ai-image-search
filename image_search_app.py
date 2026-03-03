@@ -711,7 +711,7 @@ class ImageSearchApp:
         msg_label.pack(padx=15, pady=10)
         
         self.root.after(10, self._scroll_chat_to_bottom)
-        return msg_label
+        return msg_label, inner_frame
 
     def _scroll_chat_to_bottom(self):
         self.chat_scroll_frame.update_idletasks()
@@ -876,7 +876,7 @@ Context (List of relevant photos):
             def prep_bubble():
                 self._hide_typing()
                 self._current_assistant_text = ""
-                self._current_bubble_label = self._create_chat_bubble("", role="Assistant")
+                self._current_bubble_label, self._current_bubble_frame = self._create_chat_bubble("", role="Assistant")
             
             self.root.after(0, prep_bubble)
             time.sleep(0.05) # Yield briefly for UI creation
@@ -910,6 +910,25 @@ Context (List of relevant photos):
             self.root.after(0, self._scroll_chat_to_bottom)
             self.chat_memory.append(("User", query))
             self.chat_memory.append(("Assistant", full_answer))
+            
+            # --- "Jump to Image" dynamic button generation ---
+            import re
+            found_files = re.findall(r'[\w\-\.]+\.(?:heic|jpg|jpeg|png|webp)', full_answer, re.IGNORECASE)
+            valid_files = [f for f in set(found_files) if f in self.filenames]
+            
+            if valid_files:
+                def append_jump_buttons(files, frame):
+                    for f in files:
+                        f_path = os.path.join(self.image_folder_path, f)
+                        btn = ctk.CTkButton(
+                            frame, text=f"📂 View Match ({f})",
+                            command=lambda p=f_path: self.reveal_file_in_os(p),
+                            height=28, corner_radius=8, font=("Inter", 11, "bold"),
+                            fg_color=self.colors["accent"], text_color="#FFFFFF", hover_color="#584ab8"
+                        )
+                        btn.pack(padx=15, pady=(0, 10), anchor="w")
+                    self._scroll_chat_to_bottom()
+                self.root.after(0, lambda v=valid_files[:3], f=self._current_bubble_frame: append_jump_buttons(v, f))
                 
         except Exception as e:
             # Trap silent crashes inside the thread and report them back to GUI
