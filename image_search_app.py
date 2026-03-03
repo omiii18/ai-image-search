@@ -676,33 +676,66 @@ class ImageSearchApp:
         desc = ctk.CTkLabel(parent, text="Ask questions about your indexed photos. Powered by local LLM + EXIF data.", font=("Inter", 13), text_color=self.colors["subtext"])
         desc.pack(anchor="w", padx=30, pady=(0, 20))
         
-        self.chat_history = ctk.CTkTextbox(parent, font=("Inter", 13), fg_color="#FFFFFF", border_color=self.colors["border"], border_width=1, corner_radius=10, state="disabled")
-        self.chat_history.pack(fill="both", expand=True, padx=30, pady=(0, 15))
+        # Chat History Scrollable Frame
+        self.chat_scroll_frame = ctk.CTkScrollableFrame(parent, fg_color="transparent", scrollbar_button_color=self.colors["border"])
+        self.chat_scroll_frame.pack(fill="both", expand=True, padx=20, pady=(0, 5))
         
-        input_frame = ctk.CTkFrame(parent, fg_color="transparent", height=45)
+        # Typing indicator (Hidden by default)
+        self.typing_indicator = ctk.CTkLabel(parent, text="", font=("Inter", 12, "italic"), text_color=self.colors["subtext"])
+        
+        # Modern Input Bar
+        input_frame = ctk.CTkFrame(parent, fg_color="transparent", height=50)
         input_frame.pack(fill="x", padx=30, pady=(0, 30))
         
-        self.chat_input = ctk.CTkEntry(input_frame, placeholder_text="e.g. When did I last go to the beach?", font=("Inter", 14), height=45, corner_radius=10, fg_color="#FFFFFF", border_color=self.colors["border"], text_color=self.colors["text"])
+        self.chat_input = ctk.CTkEntry(input_frame, placeholder_text="e.g. When did I last go to the beach?", font=("Inter", 14), height=45, corner_radius=22, fg_color="#FFFFFF", border_color=self.colors["border"], border_width=1, text_color=self.colors["text"])
         self.chat_input.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self.chat_input.bind("<Return>", lambda e: self._handle_chat_message())
         
-        send_btn = ctk.CTkButton(input_frame, text="Send", width=80, fg_color=self.colors["text"], text_color="#FFFFFF", hover_color="#374151", height=45, corner_radius=10, font=("Inter", 13, "bold"), command=self._handle_chat_message)
+        send_btn = ctk.CTkButton(input_frame, text="↑", width=45, fg_color=self.colors["text"], text_color="#FFFFFF", hover_color="#374151", height=45, corner_radius=22, font=("Inter", 18, "bold"), command=self._handle_chat_message)
         send_btn.pack(side="left")
+
+    def _create_chat_bubble(self, text, role="User"):
+        bubble_frame = ctk.CTkFrame(self.chat_scroll_frame, fg_color="transparent")
+        bubble_frame.pack(fill="x", padx=10, pady=5)
+        
+        is_user = role == "User"
+        bg_color = self.colors["accent"] if is_user else "#FFFFFF"
+        text_color = "#FFFFFF" if is_user else self.colors["text"]
+        border_color = self.colors["accent"] if is_user else self.colors["border"]
+        border_width = 0 if is_user else 1
+        
+        inner_frame = ctk.CTkFrame(bubble_frame, fg_color=bg_color, corner_radius=15, border_width=border_width, border_color=border_color)
+        inner_frame.pack(side="right" if is_user else "left", anchor="e" if is_user else "w", padx=5)
+        
+        msg_label = ctk.CTkLabel(inner_frame, text=text, font=("Inter", 13), text_color=text_color, justify="left", wraplength=450)
+        msg_label.pack(padx=15, pady=10)
+        
+        self.root.after(10, self._scroll_chat_to_bottom)
+        return msg_label
+
+    def _scroll_chat_to_bottom(self):
+        self.chat_scroll_frame.update_idletasks()
+        try:
+            self.chat_scroll_frame._parent_canvas.yview_moveto(1.0)
+        except Exception:
+            pass
+            
+    def _show_typing(self, message="Thinking..."):
+        self.typing_indicator.configure(text=message)
+        self.typing_indicator.pack(anchor="w", padx=45, pady=(0, 10))
+        self._scroll_chat_to_bottom()
+        
+    def _hide_typing(self):
+        self.typing_indicator.pack_forget()
         
     def _handle_chat_message(self):
         msg = self.chat_input.get().strip()
         if not msg: return
         
         self.chat_input.delete(0, tk.END)
-        self._append_to_chat(f"You: {msg}\n")
+        self._create_chat_bubble(msg, role="User")
         
         threading.Thread(target=self._process_assistant_query, args=(msg,), daemon=True).start()
-        
-    def _append_to_chat(self, text):
-        self.chat_history.configure(state="normal")
-        self.chat_history.insert(tk.END, text)
-        self.chat_history.see(tk.END)
-        self.chat_history.configure(state="disabled")
 
     def _extract_subject_from_query(self, query):
         import urllib.request
@@ -772,7 +805,7 @@ Search Phrase:'''
                 self.chat_memory = []
 
             if not self.faiss_index or not self.model:
-                self.root.after(0, lambda: self._append_to_chat("Assistant: Please configure and index a photo folder first.\n\n"))
+                self.root.after(0, lambda: self._create_chat_bubble("Please configure and index a photo folder first.", role="Assistant"))
                 return
                 
             # --- Intent Classifier (Logic Gate) ---
@@ -789,12 +822,12 @@ Search Phrase:'''
                 
             if is_social:
                 ans = "Hello! I am your DeepSearch AI Memory Assistant. How can I help you find or remember your photos today?"
-                self.root.after(0, lambda: self._append_to_chat(f"Assistant: {ans}\n\n"))
+                self.root.after(0, lambda: self._create_chat_bubble(ans, role="Assistant"))
                 self.chat_memory.append(("User", query))
                 self.chat_memory.append(("Assistant", ans))
                 return
 
-            self.root.after(0, lambda: self._append_to_chat("Assistant: Understanding your question...\n"))
+            self.root.after(0, lambda: self._show_typing("Understanding your question..."))
             
             # --- LLM Connection Health Check ---
             import urllib.request
@@ -804,7 +837,8 @@ Search Phrase:'''
                 with urllib.request.urlopen(req, timeout=5) as response:
                     pass
             except Exception:
-                self.root.after(0, lambda: self._append_to_chat("Error: Local LLM server is not running or unreachable.\n\n"))
+                self.root.after(0, self._hide_typing)
+                self.root.after(0, lambda: self._create_chat_bubble("Error: Local LLM server is not running or unreachable.", role="Assistant"))
                 return
             
             # 1. Use local LLM to extract the core visual subject & query expansion
@@ -817,7 +851,7 @@ Search Phrase:'''
             except Exception:
                 search_subject = subject
 
-            self.root.after(0, lambda: self._append_to_chat(f"Assistant: Searching memories for '{search_subject}'...\n"))
+            self.root.after(0, lambda: self._show_typing(f"Searching memories for '{search_subject}'..."))
             
             # 2. Build RAG Context using FAISS & EXIF Date Extraction
             context_lines = self._build_rag_context(search_subject)
@@ -835,7 +869,13 @@ Context (List of relevant photos):
             
             full_prompt = f"{system_prompt}\n\nUser Question: {query}\nAnswer:"
 
-            self.root.after(0, lambda: self._append_to_chat("Assistant: "))
+            def prep_bubble():
+                self._hide_typing()
+                self._current_assistant_text = ""
+                self._current_bubble_label = self._create_chat_bubble("", role="Assistant")
+            
+            self.root.after(0, prep_bubble)
+            time.sleep(0.05) # Yield briefly for UI creation
 
             # 4. Generate local response (Streaming)
             data = json.dumps({
@@ -856,16 +896,21 @@ Context (List of relevant photos):
                         chunk = result.get('response', '')
                         if chunk:
                             full_answer += chunk
-                            self.root.after(0, lambda c=chunk: self._append_to_chat(c))
-                self.root.after(0, lambda: self._append_to_chat("\n\n"))
-                
-            # Save to memory
+                            def update_bubble(c=chunk):
+                                if hasattr(self, '_current_bubble_label'):
+                                    self._current_assistant_text += c
+                                    self._current_bubble_label.configure(text=self._current_assistant_text)
+                            self.root.after(0, update_bubble)
+                            
+            # Final scroll and Save to memory
+            self.root.after(0, self._scroll_chat_to_bottom)
             self.chat_memory.append(("User", query))
             self.chat_memory.append(("Assistant", full_answer))
                 
         except Exception as e:
             # Trap silent crashes inside the thread and report them back to GUI
-            self.root.after(0, lambda err=e: self._append_to_chat(f"\nSystem Error: {str(err)}\n\n"))
+            self.root.after(0, self._hide_typing)
+            self.root.after(0, lambda err=e: self._create_chat_bubble(f"System Error: {str(err)}", role="Assistant"))
 
     def _build_header(self, parent):
         header_container = ctk.CTkFrame(parent, fg_color="transparent")
