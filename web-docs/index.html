@@ -103,6 +103,10 @@
       animation-delay: .4s
     }
 
+    .d5 {
+      animation-delay: .5s
+    }
+
     .tc:hover {
       transform: translateY(-4px);
       box-shadow: 0 12px 40px rgba(0, 0, 0, .1)
@@ -380,7 +384,7 @@
 
   <!-- FAQ (Off-White) -->
   <section id="faq" class="bg-off ov py-24 md:py-32">
-    <div class="max-w-[700px] mx-auto px-6">
+    <div class="max-w-3xl mx-auto px-6">
       <div class="text-center mb-14 anim">
         <h2 class="text-3xl sm:text-4xl md:text-[40px] font-bold text-ch tracking-[-0.01em]">Frequently Asked Questions
         </h2>
@@ -417,40 +421,40 @@
   </footer>
 
   <script>
-    // ── OS-Aware Download Buttons ──────────────────────────────────────
-    (function detectOS() {
-      const ua = (navigator.userAgent || '').toLowerCase();
-      let os = 'unknown';
+      // ── OS-Aware Download Buttons ──────────────────────────────────────
+      (function detectOS() {
+        const ua = (navigator.userAgent || '').toLowerCase();
+        let os = 'unknown';
 
-      // Modern browsers expose userAgentData (Chrome 90+)
-      if (navigator.userAgentData && navigator.userAgentData.platform) {
-        const p = navigator.userAgentData.platform.toLowerCase();
-        if (p.includes('mac'))     os = 'mac';
-        else if (p.includes('win')) os = 'win';
-      } else {
-        if (ua.includes('mac'))    os = 'mac';
-        else if (ua.includes('win')) os = 'win';
-      }
+        // Modern browsers expose userAgentData (Chrome 90+)
+        if (navigator.userAgentData && navigator.userAgentData.platform) {
+          const p = navigator.userAgentData.platform.toLowerCase();
+          if (p.includes('mac')) os = 'mac';
+          else if (p.includes('win')) os = 'win';
+        } else {
+          if (ua.includes('mac')) os = 'mac';
+          else if (ua.includes('win')) os = 'win';
+        }
 
-      // SVG icons
-      const appleIcon = `<svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>`;
-      const winIcon  = `<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+        // SVG icons
+        const appleIcon = `<svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>`;
+        const winIcon = `<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 
-      // GitHub release asset URLs
-      const MAC_URL = 'https://github.com/omiii18/ai-image-search/releases/download/v1.1.0/DeepSearchAI_macOS.zip';
-      const WIN_URL = 'https://github.com/omiii18/ai-image-search/releases/download/v1.1.0/DeepSearchAI_windowsOS.zip';
+        // GitHub release asset URLs
+        const MAC_URL = 'https://github.com/omiii18/ai-image-search/releases/download/v1.1.0/DeepSearchAI_macOS.zip';
+        const WIN_URL = 'https://github.com/omiii18/ai-image-search/releases/download/v1.1.0/DeepSearchAI_windowsOS.zip';
 
-      // Button builders
-      const primary = (icon, label, href, filename) =>
-        `<a href="${href}" download="${filename}" id="dl-primary"
+        // Button builders
+        const primary = (icon, label, href, filename) =>
+          `<a href="${href}" download="${filename}" id="dl-primary"
             class="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-bold text-white transition-all duration-200 hover:scale-105 active:scale-95"
             style="background:#EF4444; box-shadow:0 4px 14px rgba(239,68,68,0.35);">
           ${icon}
           <span>${label}</span>
         </a>`;
 
-      const secondary = (icon, label, href, filename) =>
-        `<a href="${href}" download="${filename}" id="dl-secondary"
+        const secondary = (icon, label, href, filename) =>
+          `<a href="${href}" download="${filename}" id="dl-secondary"
             class="inline-flex items-center gap-1.5 text-sm font-medium transition-colors duration-150"
             style="color:var(--ch,#1a1a2e); opacity:.55;"
             onmouseover="this.style.opacity='1';this.style.textDecoration='underline';"
@@ -459,56 +463,88 @@
           <span>${label}</span>
         </a>`;
 
-      const outlineBtn = (icon, label, href, filename) =>
-        `<a href="${href}" download="${filename}"
+        const outlineBtn = (icon, label, href, filename) =>
+          `<a href="${href}" download="${filename}"
               class="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-bold transition-all duration-200 hover:scale-105 active:scale-95"
               style="background:transparent; border:2px solid rgba(26,26,46,.18); color:var(--ch,#1a1a2e);">
             ${icon}<span>${label}</span>
           </a>`;
 
-      let html = '';
-      if (os === 'mac') {
-        html = `<div class="flex flex-col gap-3">
-          ${primary(appleIcon,  'Download for Mac',            MAC_URL, 'DeepSearchAI_macOS.zip')}
-          ${secondary(winIcon,  'Also available on Windows',   WIN_URL, 'DeepSearchAI_windowsOS.zip')}
+        let html = '';
+        if (os === 'mac') {
+          html = `<div class="flex flex-col gap-3">
+          ${primary(appleIcon, 'Download for Mac', MAC_URL, 'DeepSearchAI_macOS.zip')}
+          ${secondary(winIcon, 'Also available on Windows', WIN_URL, 'DeepSearchAI_windowsOS.zip')}
         </div>`;
-      } else if (os === 'win') {
-        html = `<div class="flex flex-col gap-3">
-          ${primary(winIcon,    'Download for Windows',        WIN_URL, 'DeepSearchAI_windowsOS.zip')}
-          ${secondary(appleIcon,'Also available on macOS',     MAC_URL, 'DeepSearchAI_macOS.zip')}
+        } else if (os === 'win') {
+          html = `<div class="flex flex-col gap-3">
+          ${primary(winIcon, 'Download for Windows', WIN_URL, 'DeepSearchAI_windowsOS.zip')}
+          ${secondary(appleIcon, 'Also available on macOS', MAC_URL, 'DeepSearchAI_macOS.zip')}
         </div>`;
-      } else {
-        // Mobile or unknown — equal weight side-by-side, both wired
-        html = `<div class="flex flex-wrap gap-3">
-          ${primary(appleIcon,    'Download for Mac',      MAC_URL, 'DeepSearchAI_macOS.zip')}
-          ${outlineBtn(winIcon,   'Download for Windows',  WIN_URL, 'DeepSearchAI_windowsOS.zip')}
+        } else {
+          // Mobile or unknown — equal weight side-by-side, both wired
+          html = `<div class="flex flex-wrap gap-3">
+          ${primary(appleIcon, 'Download for Mac', MAC_URL, 'DeepSearchAI_macOS.zip')}
+          ${outlineBtn(winIcon, 'Download for Windows', WIN_URL, 'DeepSearchAI_windowsOS.zip')}
         </div>`;
-      }
+        }
 
-      document.getElementById('download-btns').innerHTML = html;
-    })();
+        document.getElementById('download-btns').innerHTML = html;
+      })();
 
     // FAQ Accordion
     const faqs = [
-      { q: "Is DeepSearch AI really 100% offline?", a: "Yes! All AI models run entirely on your local machine. No data is ever sent to a cloud server." },
-      { q: "What file types does it support?", a: "All major image formats (JPG, PNG, WEBP, BMP, GIF) with PDF and document support coming soon." },
+      { q: "Is DeepSearch AI really 100% offline?", a: "Yes. All processing via CLIP and FAISS happens locally on your machine. No data ever leaves your device." },
+      { q: "Does it support external hard drives?", a: "Absolutely. You can index any local or connected folder for instant semantic searching." },
+      { q: "What file types does it support?", a: "All major image formats (JPG, PNG, HEIC, HEIF, WEBP, BMP, GIF) with PDF and document support coming soon." },
       { q: "How fast is the indexing?", a: "FAISS-powered vector indexing processes thousands of images in under a minute with GPU acceleration." },
       { q: "Does it work on Mac and Windows?", a: "Yes! Native builds for macOS (Apple Silicon & Intel) and Windows (x64). Linux coming soon." },
       { q: "Is it free?", a: "Completely free and open source under the MIT license. No subscriptions, no hidden fees." },
     ];
     const list = document.getElementById("faq-list");
     let openIdx = 0;
+
     function renderFAQ() {
       list.innerHTML = faqs.map((f, i) => `
-<div class="border border-gray-200/80 rounded-xl overflow-hidden bg-white hover:border-br/30 transition-all">
-<button onclick="toggleFAQ(${i})" class="w-full flex items-center justify-between px-6 py-5 text-left">
-<span class="font-semibold text-ch pr-4">${f.q}</span>
-<svg class="w-5 h-5 text-br flex-shrink-0 transition-transform duration-300 ${openIdx === i ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-</button>
-<div class="acc ${openIdx === i ? 'open' : ''}"><p class="px-6 pb-5 text-ch/60 leading-relaxed">${f.a}</p></div>
-</div>`).join("");
+        <div class="border border-gray-100 rounded-2xl overflow-hidden bg-white hover:shadow-md hover:shadow-slate-200/50 transition-all duration-300" id="faq-item-${i}">
+          <button onclick="toggleFAQ(${i})" class="w-full flex items-center justify-between px-6 py-5 text-left group">
+            <span id="faq-q-${i}" class="font-semibold transition-colors duration-300 pr-4 ${openIdx === i ? 'text-br' : 'text-ch'}">${f.q}</span>
+            <svg id="faq-icon-${i}" class="w-5 h-5 flex-shrink-0 transition-transform duration-300 ${openIdx === i ? 'rotate-180 text-br' : 'text-ch/40 group-hover:text-ch/60'}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div id="faq-acc-${i}" class="acc ${openIdx === i ? 'open' : ''}">
+            <p id="faq-ans-${i}" class="px-6 pb-5 text-ch/60 leading-relaxed transition-opacity duration-300 ${openIdx === i ? 'opacity-100 delay-150' : 'opacity-0'}">${f.a}</p>
+          </div>
+        </div>`).join("");
     }
-    function toggleFAQ(i) { openIdx = openIdx === i ? -1 : i; renderFAQ(); }
+
+    function toggleFAQ(clickedIdx) {
+      faqs.forEach((_, i) => {
+        const q = document.getElementById(`faq-q-${i}`);
+        const icon = document.getElementById(`faq-icon-${i}`);
+        const acc = document.getElementById(`faq-acc-${i}`);
+        const ans = document.getElementById(`faq-ans-${i}`);
+
+        if (i === clickedIdx && openIdx !== clickedIdx) {
+          // Open the clicked one
+          q.classList.replace('text-ch', 'text-br');
+          icon.classList.remove('text-ch/40', 'group-hover:text-ch/60');
+          icon.classList.add('rotate-180', 'text-br');
+          acc.classList.add('open');
+          ans.classList.replace('opacity-0', 'opacity-100');
+          ans.classList.add('delay-150');
+        } else {
+          // Close others (or close the clicked one if it was already open)
+          q.classList.replace('text-br', 'text-ch');
+          icon.classList.remove('rotate-180', 'text-br');
+          icon.classList.add('text-ch/40', 'group-hover:text-ch/60');
+          acc.classList.remove('open');
+          ans.classList.replace('opacity-100', 'opacity-0');
+          ans.classList.remove('delay-150');
+        }
+      });
+      openIdx = openIdx === clickedIdx ? -1 : clickedIdx;
+    }
+
     renderFAQ();
 
     // Scroll-triggered animations
