@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>DeepSearch AI — Private, Local AI-Powered Search</title>
+  <meta name="description" content="Privacy-first local AI search for your files." />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { theme: { extend: { fontFamily: { j: ['"Plus Jakarta Sans"', 'sans-serif'] }, colors: { off: '#FAFAF7', br: '#EF4444', ch: '#1E293B' } } } }</script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    html {
+      scroll-behavior: smooth
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #FAFAF7;
+      color: #1E293B;
+      overflow-x: hidden
+    }
+
+    .glass {
+      background: rgba(255, 255, 255, .15);
+      border: 1px solid rgba(255, 255, 255, .25);
+      backdrop-filter: blur(4px);
+      transition: all .4s ease
+    }
+
+    .glass:hover {
+      background: rgba(255, 255, 255, .08);
+      backdrop-filter: blur(16px);
+      transform: translateY(-6px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .15)
+    }
+
+    .ov {
+      border-radius: 2rem 2rem 0 0;
+      margin-top: -2rem;
+      position: relative;
+      z-index: 2
+    }
+
+    .acc {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height .4s ease
+    }
+
+    .acc.open {
+      max-height: 300px
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(40px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    .anim {
+      animation: fadeUp .7s ease both
+    }
+
+    .d1 {
+      animation-delay: .1s
+    }
+
+    .d2 {
+      animation-delay: .2s
+    }
+
+    .d3 {
+      animation-delay: .3s
+    }
+
+    .d4 {
+      animation-delay: .4s
+    }
+
+    .tc:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .1)
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- NAV -->
+  <nav class="fixed top-0 left-0 right-0 z-50 bg-off/90 backdrop-blur-md" id="navbar">
+    <div class="max-w-[1200px] mx-auto flex items-center justify-between px-6 py-4">
+      <a href="#" class="text-2xl font-extrabold text-ch">DeepSearch <span class="text-br">AI</span></a>
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#home" class="text-sm font-semibold text-ch/70 hover:text-br transition-colors">Home</a>
+        <a href="#features" class="text-sm font-semibold text-ch/70 hover:text-br transition-colors">Features</a>
+        <a href="#faq" class="text-sm font-semibold text-ch/70 hover:text-br transition-colors">FAQ</a>
+        <a href="#home"
+          class="px-5 py-2.5 bg-br text-white text-sm font-semibold rounded-lg hover:bg-red-600 hover:scale-105 transition-all">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section id="home" class="bg-off pt-32 pb-20 md:pt-40 md:pb-28">
+    <div class="max-w-[1200px] mx-auto px-6 grid md:grid-cols-2 gap-12 md:gap-16 items-center">
+      <div class="space-y-7 anim">
+        <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-red-50 border border-red-100 rounded-full">
+          <svg class="w-4 h-4 text-br" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" />
+          </svg>
+          <span class="text-xs font-semibold text-br tracking-wide uppercase">100% Private & Local</span>
+        </div>
+        <h1 class="text-4xl sm:text-5xl lg:text-[64px] font-extrabold text-ch leading-[1.1] tracking-[-0.02em]">
+          Search Your Files<br class="hidden lg:block" /> With <span class="text-br">AI Vision.</span>
+        </h1>
+        <p class="text-lg md:text-xl text-ch/60 leading-relaxed max-w-lg font-medium">
+          DeepSearch AI understands your photos, documents, and design assets. Find anything instantly using natural
+          language — all processed locally.
+        </p>
+        <div class="flex flex-wrap gap-4 pt-2">
+          <a href="#"
+            class="inline-flex items-center gap-2.5 px-7 py-3.5 bg-br text-white font-semibold rounded-lg hover:bg-red-600 hover:scale-105 transition-all">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path
+                d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+            </svg>
+            Download for Mac
+          </a>
+          <a href="#"
+            class="inline-flex items-center gap-2.5 px-7 py-3.5 bg-ch text-white font-semibold rounded-lg hover:bg-slate-800 hover:scale-105 transition-all">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            Download for Windows
+          </a>
+        </div>
+        <p class="text-xs text-ch/40 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path
+              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          Free & open source. No data ever leaves your machine.
+        </p>
+      </div>
+      <div class="anim d2">
+        <div
+          class="relative rounded-2xl overflow-hidden shadow-2xl shadow-br/10 border border-gray-200/50 bg-white aspect-[4/3] hover:scale-[1.02] transition-transform duration-500">
+          <div class="absolute inset-0 bg-gradient-to-br from-br/5 via-transparent to-br/10 z-10 pointer-events-none">
+          </div>
+          <div class="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20">
+            <div class="w-16 h-16 rounded-full bg-br/10 flex items-center justify-center">
+              <svg class="w-7 h-7 text-br" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+            <p class="text-sm font-medium text-ch/50">Product Demo Video</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES (Red) -->
+  <section id="features" class="bg-br ov py-24 md:py-32">
+    <div class="max-w-[1200px] mx-auto px-6">
+      <div class="text-center mb-16 anim">
+        <span
+          class="inline-block px-4 py-1.5 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-white/90 tracking-wide uppercase mb-6">Core
+          Features</span>
+        <h2 class="text-3xl sm:text-4xl md:text-[40px] font-bold text-white leading-tight tracking-[-0.01em]">Everything
+          You Need to<br class="hidden sm:block" /> Search Smarter</h2>
+      </div>
+      <div class="grid md:grid-cols-3 gap-6 md:gap-8">
+
+        <div class="glass rounded-2xl p-8 md:p-10 cursor-pointer group relative overflow-hidden anim d1">
+          <div class="relative z-10 space-y-4">
+            <div
+              class="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-colors">
+              <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path
+                  d="M12 2a7 7 0 017 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 01-1 1h-6a1 1 0 01-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 017-7z" />
+                <path d="M9 21h6M10 17v4M14 17v4" />
+              </svg>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-white">AI-Powered Vision Search</h3>
+            <p class="text-white/80 font-medium leading-relaxed">Find any image by describing what's in it naturally.
+            </p>
+          </div>
+        </div>
+
+        <div class="glass rounded-2xl p-8 md:p-10 cursor-pointer group relative overflow-hidden anim d2">
+          <div class="relative z-10 space-y-4">
+            <div
+              class="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-colors">
+              <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-white">100% Offline & Private</h3>
+            <p class="text-white/80 font-medium leading-relaxed">Everything runs locally. Your data never leaves your
+              device.</p>
+          </div>
+        </div>
+
+        <div class="glass rounded-2xl p-8 md:p-10 cursor-pointer group relative overflow-hidden anim d3">
+          <div class="relative z-10 space-y-4">
+            <div
+              class="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-colors">
+              <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-white">Blazing Fast Indexing</h3>
+            <p class="text-white/80 font-medium leading-relaxed">Index thousands of files in seconds with FAISS vectors.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- USE CASES (Off-White) -->
+  <section class="bg-off ov py-24 md:py-32">
+    <div class="max-w-[1200px] mx-auto px-6">
+      <div class="text-center mb-16 anim">
+        <h2 class="text-3xl sm:text-4xl md:text-[40px] font-bold text-ch leading-tight tracking-[-0.01em]">Built for
+          non-technical teams<br class="hidden sm:block" /> with a need for <span class="text-br">speed</span></h2>
+        <p class="mt-4 text-ch/50 text-lg max-w-2xl mx-auto">No setup. No cloud. Just search.</p>
+      </div>
+      <div class="space-y-16 md:space-y-24">
+
+        <div class="flex flex-col md:flex-row gap-10 md:gap-16 items-center anim">
+          <div class="flex-1 space-y-5">
+            <div class="w-12 h-12 rounded-xl bg-br/10 flex items-center justify-center">
+              <svg class="w-6 h-6 text-br" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path
+                  d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+            </div>
+            <h3 class="text-2xl md:text-3xl font-bold text-ch">Find Design Assets Instantly</h3>
+            <p class="text-ch/60 text-lg leading-relaxed">Stop scrolling through folders. Just type "that blue gradient
+              banner from last quarter" and DeepSearch finds it.</p>
+          </div>
+          <div
+            class="flex-1 w-full rounded-2xl bg-gradient-to-br from-rose-100 to-pink-200 aspect-[4/3] flex items-center justify-center shadow-lg hover:scale-[1.03] transition-transform duration-500">
+            <p class="text-sm font-medium text-ch/40">UI Mockup</p>
+          </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row-reverse gap-10 md:gap-16 items-center anim">
+          <div class="flex-1 space-y-5">
+            <div class="w-12 h-12 rounded-xl bg-br/10 flex items-center justify-center">
+              <svg class="w-6 h-6 text-br" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+            </div>
+            <h3 class="text-2xl md:text-3xl font-bold text-ch">Locate Old Documents Fast</h3>
+            <p class="text-ch/60 text-lg leading-relaxed">Search through thousands of screenshots, receipts, and scans
+              using the text or visuals you remember.</p>
+          </div>
+          <div
+            class="flex-1 w-full rounded-2xl bg-gradient-to-br from-sky-100 to-blue-200 aspect-[4/3] flex items-center justify-center shadow-lg hover:scale-[1.03] transition-transform duration-500">
+            <p class="text-sm font-medium text-ch/40">UI Mockup</p>
+          </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-10 md:gap-16 items-center anim">
+          <div class="flex-1 space-y-5">
+            <div class="w-12 h-12 rounded-xl bg-br/10 flex items-center justify-center">
+              <svg class="w-6 h-6 text-br" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </div>
+            <h3 class="text-2xl md:text-3xl font-bold text-ch">Organize Photo Libraries</h3>
+            <p class="text-ch/60 text-lg leading-relaxed">Find "sunset at the beach" or "birthday party photos" across
+              your entire library without manual tagging.</p>
+          </div>
+          <div
+            class="flex-1 w-full rounded-2xl bg-gradient-to-br from-amber-100 to-yellow-200 aspect-[4/3] flex items-center justify-center shadow-lg hover:scale-[1.03] transition-transform duration-500">
+            <p class="text-sm font-medium text-ch/40">UI Mockup</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- TECH STACK (Red) -->
+  <section class="bg-br ov py-24 md:py-32">
+    <div class="max-w-[1200px] mx-auto px-6">
+      <div class="text-center mb-14 anim">
+        <span
+          class="inline-block px-4 py-1.5 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-white/90 tracking-wide uppercase mb-6">Powered
+          By</span>
+        <h2 class="text-3xl sm:text-4xl md:text-[40px] font-bold text-white leading-tight tracking-[-0.01em]">Built on
+          World-Class AI</h2>
+      </div>
+      <div class="border-2 border-white/20 rounded-3xl p-6 md:p-10 bg-white/5 backdrop-blur-sm anim d1">
+        <div class="grid md:grid-cols-3 gap-6">
+
+          <div class="tc bg-white rounded-2xl p-8 text-center space-y-4 transition-all duration-300 cursor-pointer">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-br/10 flex items-center justify-center">
+              <svg class="w-8 h-8 text-br" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-ch">CLIP</h3>
+            <p class="text-sm font-semibold text-br">OpenAI</p>
+            <p class="text-sm text-ch/50">Vision-Language Model</p>
+          </div>
+
+          <div class="tc bg-white rounded-2xl p-8 text-center space-y-4 transition-all duration-300 cursor-pointer">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-br/10 flex items-center justify-center">
+              <svg class="w-8 h-8 text-br" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <ellipse cx="12" cy="5" rx="9" ry="3" />
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-ch">FAISS</h3>
+            <p class="text-sm font-semibold text-br">Meta AI</p>
+            <p class="text-sm text-ch/50">Vector Similarity Search</p>
+          </div>
+
+          <div class="tc bg-white rounded-2xl p-8 text-center space-y-4 transition-all duration-300 cursor-pointer">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-br/10 flex items-center justify-center">
+              <svg class="w-8 h-8 text-br" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3z" />
+                <path d="M17.5 14v3.5H14" />
+                <path d="M14 21h3.5V17.5H21" />
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-ch">RAG</h3>
+            <p class="text-sm font-semibold text-br">LangChain</p>
+            <p class="text-sm text-ch/50">Retrieval Augmented Generation</p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ (Off-White) -->
+  <section id="faq" class="bg-off ov py-24 md:py-32">
+    <div class="max-w-[700px] mx-auto px-6">
+      <div class="text-center mb-14 anim">
+        <h2 class="text-3xl sm:text-4xl md:text-[40px] font-bold text-ch tracking-[-0.01em]">Frequently Asked Questions
+        </h2>
+      </div>
+      <div class="space-y-3 anim d1" id="faq-list"></div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="bg-off border-t border-gray-200/60 py-10">
+    <div class="max-w-[1200px] mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="text-sm text-ch/40">© 2026 DeepSearch AI. All rights reserved.</p>
+      <div class="flex items-center gap-5">
+        <a href="https://github.com/omiii18" target="_blank" rel="noopener noreferrer"
+          class="text-ch/40 hover:text-br transition-colors"><svg class="w-5 h-5" fill="currentColor"
+            viewBox="0 0 24 24">
+            <path
+              d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
+          </svg></a>
+        <a href="https://x.com/omkar_karne" target="_blank" rel="noopener noreferrer"
+          class="text-ch/40 hover:text-br transition-colors"><svg class="w-5 h-5" fill="currentColor"
+            viewBox="0 0 24 24">
+            <path
+              d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+          </svg></a>
+        <a href="https://www.linkedin.com/in/omkar-karne-927371276/" target="_blank" rel="noopener noreferrer"
+          class="text-ch/40 hover:text-br transition-colors"><svg class="w-5 h-5" fill="currentColor"
+            viewBox="0 0 24 24">
+            <path
+              d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+          </svg></a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // FAQ Accordion
+    const faqs = [
+      { q: "Is DeepSearch AI really 100% offline?", a: "Yes! All AI models run entirely on your local machine. No data is ever sent to a cloud server." },
+      { q: "What file types does it support?", a: "All major image formats (JPG, PNG, WEBP, BMP, GIF) with PDF and document support coming soon." },
+      { q: "How fast is the indexing?", a: "FAISS-powered vector indexing processes thousands of images in under a minute with GPU acceleration." },
+      { q: "Does it work on Mac and Windows?", a: "Yes! Native builds for macOS (Apple Silicon & Intel) and Windows (x64). Linux coming soon." },
+      { q: "Is it free?", a: "Completely free and open source under the MIT license. No subscriptions, no hidden fees." },
+    ];
+    const list = document.getElementById("faq-list");
+    let openIdx = 0;
+    function renderFAQ() {
+      list.innerHTML = faqs.map((f, i) => `
+<div class="border border-gray-200/80 rounded-xl overflow-hidden bg-white hover:border-br/30 transition-all">
+<button onclick="toggleFAQ(${i})" class="w-full flex items-center justify-between px-6 py-5 text-left">
+<span class="font-semibold text-ch pr-4">${f.q}</span>
+<svg class="w-5 h-5 text-br flex-shrink-0 transition-transform duration-300 ${openIdx === i ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+</button>
+<div class="acc ${openIdx === i ? 'open' : ''}"><p class="px-6 pb-5 text-ch/60 leading-relaxed">${f.a}</p></div>
+</div>`).join("");
+    }
+    function toggleFAQ(i) { openIdx = openIdx === i ? -1 : i; renderFAQ(); }
+    renderFAQ();
+
+    // Scroll-triggered animations
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.style.animationPlayState = 'running'; obs.unobserve(e.target) } });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.anim').forEach(el => { el.style.animationPlayState = 'paused'; obs.observe(el) });
+  </script>
+</body>
+
+</html>
