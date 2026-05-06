@@ -1,5 +1,7 @@
 # 🧠 DeepSearch AI Photo Library (Desktop & Local-First)
 
+🌐 **Live Website Preview:** [deepsearch-ai-chi.vercel.app](https://deepsearch-ai-chi.vercel.app)
+
 **DeepSearch AI** is a powerful, privacy-focused desktop application that allows you to search through your local photo libraries using natural language or image inputs. Unlike traditional filename-based search, DeepSearch understands the *content* and *context* of your photos using advanced AI.
 
 ---
