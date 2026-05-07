@@ -279,7 +279,7 @@
           </div>
           <div
             class="flex-1 w-full rounded-2xl bg-gradient-to-br from-rose-100 to-pink-200 aspect-[4/3] flex items-center justify-center shadow-lg hover:scale-[1.03] transition-transform duration-500 overflow-hidden">
-            <video autoplay muted loop playsinline class="w-full h-full object-cover">
+            <video autoplay muted loop playsinline webkit-playsinline poster="" class="w-full h-full object-cover block">
               <source src="assets/search-demp-480p.mp4" type="video/mp4">
             </video>
           </div>
@@ -301,7 +301,7 @@
           </div>
           <div
             class="flex-1 w-full rounded-2xl bg-gradient-to-br from-sky-100 to-blue-200 aspect-[4/3] flex items-center justify-center shadow-lg hover:scale-[1.03] transition-transform duration-500 overflow-hidden">
-            <video autoplay muted loop playsinline class="w-full h-full object-cover">
+            <video autoplay muted loop playsinline webkit-playsinline poster="" class="w-full h-full object-cover block">
               <source src="assets/old-docs-demo-480p.mp4" type="video/mp4">
             </video>
           </div>
@@ -322,7 +322,7 @@
           </div>
           <div
             class="flex-1 w-full rounded-2xl bg-gradient-to-br from-amber-100 to-yellow-200 aspect-[4/3] flex items-center justify-center shadow-lg hover:scale-[1.03] transition-transform duration-500 overflow-hidden">
-            <video autoplay muted loop playsinline class="w-full h-full object-cover">
+            <video autoplay muted loop playsinline webkit-playsinline poster="" class="w-full h-full object-cover block">
               <source src="assets/tags-demo-480p.mp4" type="video/mp4">
             </video>
           </div>
@@ -558,6 +558,15 @@
       entries.forEach(e => { if (e.isIntersecting) { e.target.style.animationPlayState = 'running'; obs.unobserve(e.target) } });
     }, { threshold: 0.1 });
     document.querySelectorAll('.anim').forEach(el => { el.style.animationPlayState = 'paused'; obs.observe(el) });
+
+    // iOS Low Power Mode / Autoplay Fallback: Try playing videos on first interaction
+    document.body.addEventListener('touchstart', () => {
+      document.querySelectorAll('video').forEach(v => {
+        if (v.paused) {
+          v.play().catch(() => {});
+        }
+      });
+    }, { once: true });
   </script>
 </body>
 
